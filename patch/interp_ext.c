@@ -821,6 +821,58 @@ __attribute__((noinline)) static void fov_restore(void)
     fov_proj(cam, R->tru);
 }
 
+/* ---------------------------------------------------------------------
+ * Diorama cameras (area select, event backdrops).  While scene flag bit i
+ * (*(0x464AF8)) is set, scene i's NW4C camera (*(0x464B10 + i*0xC)) is not
+ * synced from the game camera; FUN_00341C74 (30 Hz calc) tweens it: node
+ * translation +0x58/+0x68/+0x78 and the view updater's rotation vector
+ * upd+8..+0x10 (FUN_0023D51C).  GDB showed no other writer and writes on
+ * logic frames only.  Midpoint swap on logic frames, true values at run-end.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext3.text" rodata=".ext3.rodata"
+typedef struct { u32 cam, upd, tick, sw; float last[6], tru[6]; } DcRec;
+#define DC ((DcRec *)0x004F1E80u)                /* 2 * 64 bytes, up to the camera state at 0x4F1F00 */
+#define SCN_FLAGS (*(volatile u32 *)0x00464AF8u)
+static void dc_ptrs(const DcRec *r, float **p)
+{
+    for (int k = 0; k < 3; k++) { p[k] = (float *)(r->cam + 0x58 + k * 0x10); p[k + 3] = (float *)(r->upd + 8 + k * 4); }
+}
+__attribute__((noinline)) static void dc_restore(void)
+{
+    for (DcRec *r = DC; r < DC + 2; r++) {
+        if (!r->sw) continue;
+        r->sw = 0;
+        float *p[6]; dc_ptrs(r, p);
+        for (int k = 0; k < 6; k++) *p[k] = r->tru[k];
+        NODE_FLAGS(r->cam) |= FLAG_LOCAL_DIRTY;
+    }
+}
+#pragma clang section text=".ext.text" rodata=".ext.rodata"
+__attribute__((noinline)) static void dc_swap(u32 t)
+{
+    for (int i = 0; i < 2; i++) {
+        DcRec *r = &DC[i];
+        u32 cam = *(volatile u32 *)(0x00464B10u + i * 0xC), o, upd = 0;
+        if ((SCN_FLAGS & (1u << i)) && cam >= 0x00100000u && (o = *(u32 *)(cam + 0x258)) >= 0x00100000u)
+            upd = ((u32 (*)(u32))*(u32 *)(*(u32 *)o + 0x10))(o);      /* view updater (FUN_0023D51C) */
+        if (upd < 0x00100000u || !(*(u32 *)upd & 0x20000000u)) { r->cam = 0; continue; }
+        int ok = r->cam == cam && r->upd == upd && r->tick == t - 1, ch = 0;
+        r->cam = cam; r->upd = upd; r->tick = t;
+        float *p[6]; dc_ptrs(r, p);
+        for (int k = 0; k < 6; k++) {
+            float c = *p[k], d = c - r->last[k];
+            if (d != 0.0f) ch = 1;
+            if (d * d > THR2) ok = 0;                 /* cut, or angle wrap */
+            r->tru[k] = c;
+            *p[k] = (c + r->last[k]) * 0.5f;          /* undone below unless blending */
+            r->last[k] = c;
+        }
+        r->sw = ok && ch;
+        if (!r->sw) for (int k = 0; k < 6; k++) *p[k] = r->tru[k];
+        NODE_FLAGS(cam) |= FLAG_LOCAL_DIRTY;
+    }
+}
+
 /* Material classification cache (mat_pattern): 128 x {res, cls|cnt<<1}
  * on the game heap; pointer at 0x4F0FF0 (magic 'DFR1', layout kept). */
 #pragma clang section text=".ext.text" rodata=".ext.rodata"
@@ -925,7 +977,7 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
-        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); }
+        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); }
     }
     for (int i = 0; i < NWATCH; i++) {
         const WatchDef *d = &WDEF[i];
@@ -968,7 +1020,7 @@ void ext_watch_restore(SprTab *T)
     }
     epl_reset_corners();
     bg_restore();
-    if (CAMPAGE == 1) { scl_restore(); fov_restore(); }
+    if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); }
     if (CAMPAGE == 1) mif_restore();
     if (ROT_ANY) { ROT_ANY = 0; rot_restore(); }
 }
