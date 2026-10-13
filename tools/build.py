@@ -16,6 +16,7 @@ EXT3_END = 0x4F1E80    # 0x4F1E80-0x4F1F00: BCAM data; 0x4F1F00: camera state
 EXT4 = 0x4F2000       # fourth region: second extra page (exheader bss +0x2000)
 EXT4_END = 0x4F2E00    # 0x4F2E00-0x4F3000: scale records (SCL)
 MEM_END = 0x4F3000    # Azahar resizes code.bin to cover the bss pages before applying the IPS
+LLD = 'ld.lld.exe' if os.name == 'nt' else 'ld.lld'   # Windows does not add .exe to a name that has a dot
 
 # ---- game version -------------------------------------------------------
 # SMT4_VER=1.1 builds for the 1.1 update: every game address in the sources and
@@ -90,7 +91,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
         objs.append(obj)
     lds = f'{ROOT}/build/cave.ld'
     open(lds, 'w').write('SECTIONS { . = 0x%X; .text : { *(.text.cave) *(.text*) *(.rodata*) } . = 0x%X; .ext2 : { *(.ext2.text*) *(.ext2.rodata*) } . = 0x%X; .ext : { *(.ext.text*) *(.ext.rodata*) } . = 0x%X; .ext3 : { *(.ext3.text*) *(.ext3.rodata*) } . = 0x%X; .ext4 : { *(.ext4.text*) *(.ext4.rodata*) } /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }\n' % (CAVE, EXT2, EXT, EXT3, EXT4))
-    ld = [ 'ld.lld', '-o', elf, '-T', lds, '-e', '0', '--no-rosegment', '-N' ] + objs
+    ld = [ LLD, '-o', elf, '-T', lds, '-e', '0', '--no-rosegment', '-N' ] + objs
     for k, v in GAME_SYMS.items():
         ld += ['--defsym', f'{k}=0x{P(v):X}']
     subprocess.check_call(ld)

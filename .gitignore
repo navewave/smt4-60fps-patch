@@ -1,8 +1,7 @@
-build/
-out/
-__pycache__/
-*.pyc
-# game-derived material: keep out of any PUBLIC repository
-# (remove these two lines only for a private repo)
+# game-derived data: keep private
 game/
 re/
+# build products
+out/
+build/
+__pycache__/

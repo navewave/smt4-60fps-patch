@@ -55,7 +55,7 @@ open(f'{bd}/cam.ld', 'w').write('SECTIONS {\n'
     f'  . = 0x{PAGE+4:X}; .camcfg : {{ *(.cam.cfg) }}\n'
     f'  . = 0x{CODE_AT:X}; .camcode : {{ *(.cam.text*) *(.cam.rodata*) *(.rodata*) *(.text*) }}\n'
     '  /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) *(.llvm_addrsig) }\n}\n')
-sh('ld.lld', '-o', f'{bd}/cam.elf', '-T', f'{bd}/cam.ld', '-e', '0', '--no-rosegment', '-N', f'{bd}/cam.o',
+sh(B.LLD, '-o', f'{bd}/cam.elf', '-T', f'{bd}/cam.ld', '-e', '0', '--no-rosegment', '-N', f'{bd}/cam.o',
    '--defsym', f'SrvGetServiceHandle=0x{B.P(0x12954C):X}', '--defsym', f'ShmBlockMap=0x{B.P(0x13903C):X}')
 csyms = {p[2]: int(p[0], 16) for p in (l.split() for l in subprocess.check_output(['llvm-nm', f'{bd}/cam.elf']).decode().splitlines()) if len(p) == 3}
 def section(n):
