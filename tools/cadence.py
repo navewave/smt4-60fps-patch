@@ -1,5 +1,5 @@
 """Usage: python tools/cadence.py CLIP.mp4 [GX GY [cx,cy]]
-"""Per-region update cadence of the 3DS top screen in an OBS clip.
+Per-region update cadence of the 3DS top screen in an OBS clip.
 For each grid cell: frame-to-frame diffs d[i]. In motion, a 60 Hz region changes every
 frame; a 30 Hz one alternates (change, ~0). Prints per cell the share of 'motion pairs'
 where one diff is near zero (30 Hz signature), plus a timeline of the global pattern."""
