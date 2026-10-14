@@ -33,6 +33,11 @@ SITES = ns['SITES'] + [
   dict(addr=0x108A64, kind='bl', to='hk_campdraw',   expect=0xE3A00001),
   dict(addr=0x1031F4, kind='bl', to='hk_runend',     expect=0xE59D0000),
 ]
+# per-version hook variants: {region: {USA site: (hook, expected original word)}}
+SITE_VARIANT = {'apoc': {0x12477C: ('hk_blend_s2', 0xEE300A01)}}
+for st in SITES:
+    v = SITE_VARIANT.get(B.REGION, {}).get(st['addr'])
+    if v: st['to'], st['expect'] = v
 patches, syms, cave = B.build([f'{B.ROOT}/patch/phase3b.S', f'{B.ROOT}/patch/interp_arm.c',
                                f'{B.ROOT}/patch/interp_thumb.c', f'{B.ROOT}/patch/interp_ext.c'],
                               SITES + ns['BOOT'], NAME)
@@ -70,6 +75,7 @@ CSITES = [(0x2645CC, 0xE3550000, 'cam_yaw_hook'), (0x266284, 0xED840A19, 'cam_pi
 cam = [(PAGE, magic + cfg + bytes(CODE_AT - PAGE - 4 - len(cfg))), (CODE_AT, code)]
 for site10, expect, sym in CSITES:
     site = B.P(site10)
+    if site == B.BASE: print(f'  camera hook {site10:#x} absent in {B.REGION}: not patched'); continue
     w = struct.unpack_from('<I', orig, site - B.BASE)[0]
     assert B.masked_same(expect, w), f'camera site {site:#x}: {w:#010x}'
     for a, r in patches: assert not (a <= site < a + len(r)), f'camera hook {site:#x} collides'

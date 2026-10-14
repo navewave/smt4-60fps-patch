@@ -28,10 +28,14 @@ def check(key):
     w = lambda a: struct.unpack_from('<I', d, a - 0x100000)[0]
     ok = True
     for a, exp, what in WORDS:
-        n = build.P(a); got = w(n)
+        n = build.P(a)
+        if n == 0x100000: print(f'  {key}: {what}: absent (feature off)'); continue
+        got = w(n)
         if got != exp: ok = False; print(f'  {key}: {what}: {a:#x}->{n:#x} has {got:08x}, expected {exp:08x}')
     for site, callee, what in CALLS:
-        s, c = build.P(site), build.P(callee); got = w(s)
+        s, c = build.P(site), build.P(callee)
+        if s == 0x100000: print(f'  {key}: {what}: absent (feature off)'); continue
+        got = w(s)
         tgt = s + 8 + ((((got & 0xFFFFFF) ^ 0x800000) - 0x800000) << 2)
         if (got >> 24) != 0xEB or tgt != c: ok = False; print(f'  {key}: {what}: {s:#x} is {got:08x} (bl to {tgt:#x}), expected bl {c:#x}')
     print(f'{key}: {"OK" if ok else "PROBLEMS"}')

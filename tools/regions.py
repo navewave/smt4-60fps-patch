@@ -9,6 +9,9 @@ derived from its exheader.
     jp    JPN       0004000000088A00  Other Regions Builds/SMTIV-J-ver1_extracted
     kr    KOR       00040000000F6100  Other Regions Builds/SMTIV-K-ver1_extracted
     tw    TWN       00040000000D6D00  Other Regions Builds/SMTIV-T-ver1_extracted
+    apoc  SMT IV: Apocalypse USA  000400000019A200  Shin Megami Tensei IV - Apocalypse
+          (a different game on the same engine: functions moved by up to megabytes, so
+          tools/port.py searches the whole file for it: GLOBAL below)
 """
 import os, struct
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +23,7 @@ REGIONS = {
     'jp':   dict(name='JPN',     dir=f'{_REG}/SMTIV-J-ver1_extracted', code='code.bin'),
     'kr':   dict(name='KOR',     dir=f'{_REG}/SMTIV-K-ver1_extracted', code='code.bin'),
     'tw':   dict(name='TWN',     dir=f'{_REG}/SMTIV-T-ver1_extracted', code='code.bin'),
+    'apoc': dict(name='SMT IV: Apocalypse USA', dir='Shin Megami Tensei IV - Apocalypse', code='code.bin', glob=True),
 }
 PAGE = 0x1000
 up = lambda a, n=PAGE: (a + n - 1) // n * n

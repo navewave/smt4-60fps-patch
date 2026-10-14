@@ -94,7 +94,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     for i, src in enumerate(srcs):
         obj = f'{ROOT}/build/{out_prefix}.{i}.o'
         src = subst_source(src)
-        cmd = ['clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', '-c', src, '-o', obj]
+        cmd = ['clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', f'-DREGION_{REGION.upper()}', '-c', src, '-o', obj]
         if src.endswith('.c'):
             if src.endswith('_thumb.c'): cmd[cmd.index('-marm')] = '-mthumb'
             cmd[1:1] = os.environ.get('SMT4_CFLAGS', '').split() + ['-Oz', '-ffreestanding', '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables',
@@ -158,6 +158,8 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     if ext6: patches.append((EXT6, ext6)); emu_addrs.add(EXT6)
     for s in sites:
         addr, kind = P(s['addr']), s['kind']
+        if addr == BASE:                                   # site marked absent for this version (tools/port.py MANUAL)
+            print(f"  site {s['addr']:#x} absent in {REGION}: not patched"); continue
         orig = struct.unpack_from('<I', data, addr - BASE)[0]
         if REGION == 'us10':
             assert orig == s['expect'], f"site {addr:#x}: expected {s['expect']:#010x} got {orig:#010x}"

@@ -215,6 +215,20 @@ hk_blend:
         vpop    {d1}
         pop     {r12}
         bx      lr
+#ifdef REGION_APOC
+@ SMT IV: Apocalypse adds a variable step ("vadd s0, s0, s2"): scale s2 instead of s19.
+        .global hk_blend_s2
+hk_blend_s2:
+        push    {r12}
+        vpush   {d2}
+        ldr     r12, =STATE
+        vldr    s4, [r12, #8]
+        vmul.f32 s4, s4, s2
+        vadd.f32 s0, s0, s4
+        vpop    {d2}
+        pop     {r12}
+        bx      lr
+#endif
 
 @ ---------------------------------------------------------------------
 @ Atlus model position setters (leaf functions, entered with b):
