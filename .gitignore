@@ -7,3 +7,5 @@ build/
 __pycache__/
 Other Regions Builds/
 Shin Megami Tensei IV - Apocalypse/
+# release zips are attached to GitHub Releases, not committed
+releases/*.zip

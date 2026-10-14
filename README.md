@@ -10,12 +10,12 @@ Get the zip for your game version from the **[Releases](../../releases)** page. 
 
 | Version | Title ID | Zip |
 |---|---|---|
-| USA 1.0 | `00040000000E5C00` | `SMT4_60fps_8_USA_v1.0.zip` |
-| USA 1.1 update | `00040000000E5C00` | `SMT4_60fps_8_USA_v1.1.zip` |
-| Europe | `0004000000141C00` | `SMT4_60fps_8_EUR.zip` |
-| Japan | `0004000000088A00` | `SMT4_60fps_8_JPN.zip` |
-| Korea | `00040000000F6100` | `SMT4_60fps_8_KOR.zip` |
-| Taiwan | `00040000000D6D00` | `SMT4_60fps_8_TWN.zip` |
+| USA 1.0 | `00040000000E5C00` | `SMT4_60fps_v1.0_USA_v1.0.zip` |
+| USA 1.1 update | `00040000000E5C00` | `SMT4_60fps_v1.0_USA_v1.1.zip` |
+| Europe | `0004000000141C00` | `SMT4_60fps_v1.0_EUR.zip` |
+| Japan | `0004000000088A00` | `SMT4_60fps_v1.0_JPN.zip` |
+| Korea | `00040000000F6100` | `SMT4_60fps_v1.0_KOR.zip` |
+| Taiwan | `00040000000D6D00` | `SMT4_60fps_v1.0_TWN.zip` |
 
 ## Install (short version)
 
@@ -61,7 +61,7 @@ Requirements: Python 3 (with `numpy`), LLVM/clang with `clang`, `ld.lld`, `llvm-
 ```
 python tools/build_release.py phase8                     # USA 1.0 (game/v10/)
 SMT4_REGION=eu python tools/build_release.py phase8      # us11, eu, jp, kr, tw: see tools/regions.py
-python tools/package.py 8                                # release zips
+python tools/package.py 8 --release 1.0                  # release zips (releases/)
 ```
 
 How it works and how to debug it: [`CLAUDE.md`](CLAUDE.md) (architecture and memory map), [`docs/`](docs) (research notes, emulator debugging setup).

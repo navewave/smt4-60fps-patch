@@ -1,5 +1,7 @@
 """Package a built release for every version.
-    python tools/package.py BUILD     (expects out/phaseBUILD[_<region>]_* from build_release.py)
+    python tools/package.py BUILD [--release X.Y] [region ...]
+        (expects out/phaseBUILD[_<region>]_* from build_release.py; --release names the
+        public release: zips SMT4_60fps_vX.Y_<VERSION>.zip)
 Writes releases/SMT4_60fps_<BUILD>_<VERSION>.zip, one per version, each with
 Azahar_full, Real_3DS, Cheats and a README.  (build_release.py still makes
 NAME_60fps_only.ips; it is no longer shipped.)"""
@@ -8,6 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from regions import region, REGIONS, ROOT
 
 BUILD = sys.argv[1]
+ARGS = sys.argv[2:]
+REL = None
+if '--release' in ARGS:
+    i = ARGS.index('--release'); REL = ARGS[i + 1]; del ARGS[i:i + 2]
 LABEL = {'us10': 'USA_v1.0', 'us11': 'USA_v1.1', 'eu': 'EUR', 'jp': 'JPN', 'kr': 'KOR', 'tw': 'TWN'}
 CHEAT_TAG = {'us10': lambda n: 'USA' in n and '1.2.0' not in n, 'us11': lambda n: 'USA update 1.2.0' in n,
              'eu': lambda n: 'EUR' in n, 'jp': lambda n: n.endswith(' JP]'), 'kr': lambda n: n.endswith(' KR]'),
@@ -23,7 +29,7 @@ def cheat_blocks():
         elif line and cur is not None: cur.append(line)
     return blocks
 
-README = """SMT IV 60 FPS patch - build {build} (stable) - {name}
+README = """SMT IV 60 FPS patch - {build} - {name}
 Game: Shin Megami Tensei IV, {name} (title {tid})
 Game logic still runs at 30 Hz (original speed); the in-between frames are interpolated.
 
@@ -76,7 +82,7 @@ def package(key):
     out = lambda kind: f'{ROOT}/out/phase{BUILD}{sfx}_{kind}'
     for k in ('code.ips', 'exheader.bin', 'code_hw.ips'):
         if not os.path.exists(out(k)): raise SystemExit(f'missing {out(k)}: run SMT4_REGION={key} python tools/build_release.py phase{BUILD}')
-    name = f'SMT4_60fps_{BUILD}_{LABEL[key]}'
+    name = f'SMT4_60fps_v{REL}_{LABEL[key]}' if REL else f'SMT4_60fps_{BUILD}_{LABEL[key]}'
     stage = f'{ROOT}/build/pkg/{name}'
     shutil.rmtree(stage, ignore_errors=True)
     files = {f'Azahar_full/{tid}/exefs/code.ips': out('code.ips'), f'Azahar_full/{tid}/exheader.bin': out('exheader.bin'),
@@ -90,12 +96,12 @@ def package(key):
         os.makedirs(os.path.dirname(f'{stage}/{dst}'), exist_ok=True)
         open(f'{stage}/{dst}', 'w', encoding='utf-8', newline='\n').write(text)
     open(f'{stage}/README.txt', 'w', encoding='utf-8', newline='\r\n').write(
-        README.format(build=BUILD, name=R['name'], tid=tid, thread=THREAD, extra=EXTRA.get(key, '')))
+        README.format(build=f'release {REL} (build {BUILD})' if REL else f'build {BUILD}', name=R['name'], tid=tid, thread=THREAD, extra=EXTRA.get(key, '')))
     zp = f'{ROOT}/releases/{name}.zip'
     with zipfile.ZipFile(zp, 'w', zipfile.ZIP_DEFLATED) as z:
         for r, _, fs in os.walk(stage):
             for f in fs: z.write(os.path.join(r, f), os.path.relpath(os.path.join(r, f), stage))
     print(f'{name}.zip: {len(blocks)} cheats ({", ".join(b[0] for b in blocks)})')
 
-for key in (sys.argv[2:] or REGIONS):
+for key in (ARGS or REGIONS):
     package(key)

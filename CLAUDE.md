@@ -23,7 +23,7 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 | `v11/` | 1.0→1.1 address porting: `port.py`, `mapnew.py --write`, `addrmap.json`. |
 | `game/v10`, `game/v11` | The owner's own decompressed code.bin + exheader.bin. **Do not publish** (copyrighted game code). |
 | `re/` | Ghidra project, exported decompilation (`dump/decomp.c`, 24 MB), disassembly (`dump/text.asm`), Ghidra scripts. Not for publishing either. |
-| `releases/` | Released zips (6b USA 1.0 / 1.1, 7d USA 1.0). |
+| `releases/` | Release zips (local only, gitignored; published on GitHub Releases). |
 | `docs/notes/` | Detailed research notes. Start with `SMT4_60fps_findings.md`. |
 | `docs/RE_SETUP.md` | How to connect Ghidra (MCP) and Azahar's GDB stub for runtime debugging. |
 | `tools/gdb/` | GDB probe scripts for Azahar's stub (`sh tools/gdb/gdb.sh tools/gdb/X.gdb`): ping, tasks (live task list), watch/log probes; `whichbuild.py` reports which out/*_code.ips is running. |
@@ -37,7 +37,8 @@ python3 tools/build_release.py phase8                       # USA 1.0
 SMT4_REGION=us11 python3 tools/build_release.py phase8      # also eu, jp, kr, tw -> out/phase8_<region>_*
 python3 tools/port.py <region>                              # regenerate ports/<region>.json after adding addresses
 python3 tools/verify_region.py                              # check runtime hook points in every version
-python3 tools/package.py 8                                  # releases/SMT4_60fps_8_<VERSION>.zip: Azahar_full, Real_3DS, cheats, README (60fps_only no longer shipped)
+python3 tools/package.py 8 --release 1.0                    # releases/SMT4_60fps_v1.0_<VERSION>.zip: Azahar_full, Real_3DS, cheats, README (60fps_only no longer shipped)
+# release zips are not committed: they are attached to GitHub Releases (notes: docs/RELEASE_NOTES_v1.0.md)
 ```
 - New game addresses in the sources must be USA 1.0 addresses; re-run `tools/port.py` for every region afterwards.
 - Patch memory moves per version: STATE = .bss end + 4 (JPN 0x4F0D18, TWN 0x4F0D38), pages 0x4F0000.. shift +0x1000 for JPN/TWN. Core cave: EUR has only 2400 bytes (core is 2376).
