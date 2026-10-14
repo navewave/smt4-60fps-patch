@@ -393,6 +393,8 @@ __asm__(
 "    ldr   r12, =0x004F0FB8\n"
 "    mov   r4, #1\n"
 "    str   r4, [r12]\n"
+"    add   r12, r0, #0x5A00\n"          /* navi+0x5A8D: icon reposition flag (set by 30 Hz logic); */
+"    strb  r4, [r12, #0x8D]\n"          /* setting it every frame re-places the icons from the smoothed player position */
 "    ldr   r12, =0x0039F238\n"
 "    blx   r12\n"
 "    ldr   r12, =0x004F0FB8\n"
@@ -970,7 +972,10 @@ __attribute__((noinline)) static void pt_restore(void)
 typedef struct { u32 key, frame; u32 v[8]; u8 chL, streak, pad[2]; } QdRec;   /* 44 bytes */
 typedef struct { u32 task, lr[6], tex, x, y; u16 prio; u8 mask, pad; u16 n, pad2; } QdRep;   /* 48 bytes */
 /* stack walk through the 2D draw helpers: return address into F -> F's frame size and saved-lr slot (words) */
-static const u32 QD_WALK[9][3] = {
+extern char ext_cell_a_ret[], ext_cell_b_ret[], ext_cell_c_ret[], ext_cell_w_ret[];
+static const u32 QD_WALK[13][3] = {
+    { (u32)ext_cell_a_ret, 10, 9 }, { (u32)ext_cell_b_ret, 10, 9 },   /* 7e cell-call wrappers */
+    { (u32)ext_cell_c_ret, 10, 9 }, { (u32)ext_cell_w_ret, 10, 9 },
     { 0x002C1D2Cu, 16, 15 }, { 0x002B7A94u, 12, 11 },   /* rect-draw wrappers FUN_002C1CA0 / FUN_002B7A10 */
     { 0x002A93B8u, 62, 61 },                            /* layout pane renderer 0x2A8D68 */
     { 0x002B007Cu, 94, 93 }, { 0x002AFC94u, 94, 93 },   /* cell renderer FUN_002AF8D0 (rect / pane calls) */
@@ -1021,8 +1026,8 @@ void quad_detect(u32 *f)
                 ch[0] = f[21]; ch[1] = ch[2] = ch[3] = ch[4] = ch[5] = 0;
                 for (int l = 1; l < 6; l++) {
                     int j = 0;
-                    while (j < 9 && QD_WALK[j][0] != ch[l - 1]) j++;
-                    if (j == 9) break;
+                    while (j < 13 && QD_WALK[j][0] != ch[l - 1]) j++;
+                    if (j == 13) break;
                     ch[l] = f[pos + QD_WALK[j][2]];
                     pos += QD_WALK[j][1];
                 }
@@ -1043,79 +1048,20 @@ void quad_detect(u32 *f)
 }
 #endif
 
-/* ---------------------------------------------------------------------
- * Nav map icons (bottom screen, FUN_0039D2EC): N = *(0x44CDF0) + 0x40.
- * Two icon arrays, entries 0x4C apart, int map positions that the 30 Hz
- * field logic moves (enemies, NPCs); the draw adds the scroll offset, which
- * is already smoothed (watch list).  Midpoint the icon positions on logic
- * frames, true values at run-end.
- *   A: count N+0x61B0 (<= 24), active s16 +0x5AC4, cell +0x5AC6, pos +0x5AC8
- *   B: count N+0x5A88 (<= 256), active s16 +0xEBC,  cell +0xEBE,  pos +0xEC0
- * --------------------------------------------------------------------- */
 #pragma clang section text=".ext6.text" rodata=".ext6.rodata"   /* fourth extra page (exheader bss +0x4000) */
-#define NV_N 280
-typedef struct { u32 sig, tick; int x, y, tx, ty; } NvRec;   /* 24 bytes */
-typedef struct { u32 magic, sw; NvRec r[NV_N]; } NvTab;
-#define NV_MAGIC 0x3156414Eu
-#define NV_HEAP (*(volatile u32 *)0x004F3FCCu)
-static NvTab *heap_tab(volatile u32 *slot, u32 magic, u32 size)
+/* game-heap table: allocated once, pointer in *slot (1 = allocation failed) */
+static u32 heap_tab(volatile u32 *slot, u32 magic, u32 size)
 {
     u32 hp = *slot;
     if (hp == 1) return 0;
-    if (hp >= 0x00100000u && *(u32 *)hp == magic) return (NvTab *)hp;
+    if (hp >= 0x00100000u && *(u32 *)hp == magic) return hp;
     hp = GameAlloc_abs(0x100, 0x100, 0, size, 1);
     if (hp < 0x00100000u) { *slot = 1; return 0; }
     for (u32 i = 0; i < size; i += 4) *(u32 *)(hp + i) = 0;
     *(u32 *)hp = magic;
     *slot = hp;
-    return (NvTab *)hp;
+    return hp;
 }
-static const u16 NV_ARR[2][3] = { { 0x61B0, 0x5AC4, 24 }, { 0x5A88, 0x0EBC, 256 } };
-__attribute__((noinline)) static void nv_swap(u32 t)
-{
-    u32 N = *(volatile u32 *)0x0044CDF0u;
-    if (N < 0x00100000u) return;
-    NvTab *T = heap_tab(&NV_HEAP, NV_MAGIC, sizeof(NvTab));
-    if (!T) return;
-    N += 0x40;
-    NvRec *r = T->r;
-    for (int a = 0; a < 2; a++) {
-        int cnt = *(int *)(N + NV_ARR[a][0]);
-        if (cnt < 0 || cnt > NV_ARR[a][2]) cnt = 0;
-        for (int i = 0; i < NV_ARR[a][2]; i++, r++) {
-            u32 e = N + i * 0x4C + NV_ARR[a][1];              /* active s16, cell s16, x, y */
-            if (i >= cnt || !*(short *)e) { r->sig = 0; continue; }
-            u32 sig = *(u32 *)e | 1;
-            int x = *(int *)(e + 4), y = *(int *)(e + 8), dx = x - r->x, dy = y - r->y;
-            int ok = r->sig == sig && r->tick == t - 1 && (dx | dy) && dx <= 64 && dx >= -64 && dy <= 64 && dy >= -64;
-            r->sig = sig; r->tick = t; r->x = r->tx = x; r->y = r->ty = y;
-            if (!ok) continue;
-            *(int *)(e + 4) = x - dx / 2;
-            *(int *)(e + 8) = y - dy / 2;
-            r->tick |= 0x80000000u;                            /* swapped */
-            T->sw = 1;
-        }
-    }
-}
-__attribute__((noinline)) static void nv_restore(void)
-{
-    u32 hp = NV_HEAP, N = *(volatile u32 *)0x0044CDF0u;
-    if (hp < 0x00100000u || *(u32 *)hp != NV_MAGIC || N < 0x00100000u) return;
-    NvTab *T = (NvTab *)hp;
-    if (!T->sw) return;
-    T->sw = 0;
-    N += 0x40;
-    NvRec *r = T->r;
-    for (int a = 0; a < 2; a++)
-        for (int i = 0; i < NV_ARR[a][2]; i++, r++) {
-            if (!(r->tick & 0x80000000u)) continue;
-            r->tick &= 0x7FFFFFFFu;
-            u32 e = N + i * 0x4C + NV_ARR[a][1];
-            *(int *)(e + 4) = r->tx;
-            *(int *)(e + 8) = r->ty;
-        }
-}
-
 /* ---------------------------------------------------------------------
  * Cell-call smoothing.  UI code draws layout cells through CellPut
  * FUN_002BF460, FUN_002BF558, FUN_002B06A0 (flags, bank, cell, x, y, ...)
@@ -1220,6 +1166,8 @@ __asm__(
 "    str   r0, [r5]\n"
 "    pop   {r0, r1, r2, r3}\n"
 "    bl    \\tramp\n"
+"    .global \\name\\()_ret\n"
+"\\name\\()_ret:\n"                     /* return address seen by the 30 Hz detector's stack walk */
 "    str   r6, [r5]\n"
 "    add   sp, sp, #24\n"
 "    pop   {r4, r5, r6, pc}\n"
@@ -1350,7 +1298,7 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
-        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); nv_swap(t); ci_install(); }
+        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); ci_install(); }
     }
     for (int i = 0; i < NWATCH; i++) {
         const WatchDef *d = &WDEF[i];
@@ -1393,7 +1341,7 @@ void ext_watch_restore(SprTab *T)
     }
     epl_reset_corners();
     bg_restore();
-    if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); pt_restore(); nv_restore(); }
+    if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); pt_restore(); }
     if (CAMPAGE == 1) mif_restore();
     if (ROT_ANY) { ROT_ANY = 0; rot_restore(); }
 }

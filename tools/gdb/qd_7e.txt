@@ -1,0 +1,8 @@
+reports: 6 sites, 109 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+   66  001fc480                       bottom pos                 76,    95  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 004f419c FUN_003fe018+0xf6184
+   36  btlUI DrawDown                 bottom pos                262,   143  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 004f4058 FUN_003fe018+0xf6040
+    3  btlUI DrawDown                 bottom size               298,    37  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 004f419c FUN_003fe018+0xf6184
+    2  0021f204                       bottom pos                  6,   126  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 004f4058 FUN_003fe018+0xf6040
+    1  ButtonHelp DDRAW               bottom pos                216,   243  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 004f4058 FUN_003fe018+0xf6040
+    1  TMD DDRAW                      bottom pos                129,   156  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 004f4058 FUN_003fe018+0xf6040
