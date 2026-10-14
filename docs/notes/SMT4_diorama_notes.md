@@ -1,4 +1,18 @@
-# SMT IV 60 fps: diorama backdrops: PARKED (still 30 Hz)
+# SMT IV 60 fps: diorama backdrops
+
+## SOLVED for area select (build 7a, confirmed by the owner)
+- GDB watchpoint on the top camera node translation (*(0x464B10)+0x58) on the area-select screen:
+  the only writer is the 10-step tween in FUN_00341C74 (lr 0x341D24 / 0x341DE8), on logic frames only.
+  The bccam animation does not write it.
+- The tween writes node +0x58/+0x68/+0x78 (dirty 0x800) and the view updater rotation upd+8..+0x10
+  (FUN_0023D51C; upd = vtable slot +0x10 of *(cam+0x258), which returns *(o+0xC); header bit 0x20000000).
+- Fix: dc_swap/dc_restore in interp_ext.c (records at 0x4F1E80, 2 x 64 bytes) midpoint both on logic
+  frames while scene flag bit i of *(0x464AF8) is set; cameras at *(0x464B10 + i*0xC).
+- Earlier notes below are history. The old "D2" probe conclusion was wrong.
+- Debugging lesson: Azahar's GDB stub returns unreliable registers at breakpoints; trust memory reads.
+  Always confirm which build is loaded (tools/gdb/code.gdb) after installing: the IPS loads only at boot.
+
+# (history) PARKED notes
 
 ## Symptom
 - Area select (Mikado "Where will you go?"), event scenes over a backdrop, and the zoom behind bust-ups.

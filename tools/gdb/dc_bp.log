@@ -1,0 +1,11 @@
+The target architecture is set to "armv6k".
+warning: Target description specified unknown osabi "3DS"
+warning: No executable has been specified and target does not support
+determining executable automatically.  Try using the "file" command.
+0x002a88a8 in ?? ()
+Breakpoint 1 at 0x3fe87c
+Breakpoint 2 at 0x4f018c
+Breakpoint 3 at 0x4f0884
+dc_swap r0(t)=141404648 ctr=5414
+beforedraw=233 ext_watch_swap=0 dc_swap=30
+[Inferior 1 (Remote target) detached]

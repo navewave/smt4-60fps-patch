@@ -10,7 +10,7 @@ commands
   printf "#%d pc=%08x lr=%08x ", $n, $pc, $lr
   st
   printf "x=%f\n", *(float*)($cam+0x58)
-  if $n >= 60
+  if $n >= 50
     delete
     detach
     quit

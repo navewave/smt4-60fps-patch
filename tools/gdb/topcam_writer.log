@@ -1,0 +1,17 @@
+The target architecture is set to "armv6k".
+warning: Target description specified unknown osabi "3DS"
+warning: No executable has been specified and target does not support
+determining executable automatically.  Try using the "file" command.
+0x002a88a8 in ?? ()
+flags=00000001 topcam=15c08500
+Hardware watchpoint 1: -location *(unsigned*)($cam+0x58)
+#1 pc=0027d780 lr=001b86b0 ctr=3826 logic=1 x=0.000000
+#2 pc=002a78e4 lr=002a78d8 ctr=4816 logic=1 x=0.000000
+[Switching to Thread 4]
+#3 pc=00356cf0 lr=1ff82684 ctr=4830 logic=1 x=0.000000
+#4 pc=00356cf0 lr=1ff82684 ctr=5214 logic=1 x=nan
+#5 pc=00356cf0 lr=1ff82684 ctr=6048 logic=1 x=0.000000
+#6 pc=00356cf0 lr=1ff82684 ctr=6178 logic=1 x=0
+#7 pc=00356cf0 lr=1ff82684 ctr=6442 logic=1 x=0.000000
+#8 pc=00356cf0 lr=1ff82684 ctr=7760 logic=1 x=0
+#9 pc=00356cf0 lr=1ff82684 ctr=8624 logic=1 x=0.000000
