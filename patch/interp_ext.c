@@ -508,6 +508,13 @@ __asm__(
 "    mov   r0, sp\n"
 "    cmp   r12, #1\n"
 "    bleq  quad_interp\n"
+#ifdef QDIAG
+"    mov   r0, sp\n"
+"    ldr   r12, =0x004F0FC4\n"
+"    ldrb  r12, [r12]\n"
+"    cmp   r12, #1\n"
+"    bleq  quad_detect\n"
+#endif
 "    vpop  {d0, d1, d2, d3, d4, d5, d6, d7}\n"
 "    pop   {r0, r1, r2, r3, r12, lr}\n"
 "    vadd.f32 s10, s0, s2\n"
@@ -942,6 +949,81 @@ __attribute__((noinline)) static void pt_restore(void)
         r->sw = 0;
     }
 }
+
+#ifdef QDIAG
+/* ---------------------------------------------------------------------
+ * 30 Hz detector (diagnostic builds only, -DQDIAG).  Called from ext_quad
+ * after quad_interp with the saved frame: s0..s15, r0..r3 (vertex colours),
+ * r12, lr.  Tracks every 2D quad by texture + uv + occurrence and compares
+ * what is drawn (after smoothing) frame to frame.  A quad that changes on
+ * logic frames but not on the in-between frames for 3 ticks in a row is
+ * reported as {current task fn, caller lr, mask}: mask 1 = position,
+ * 2 = size, 4 = colour/alpha; n = number of such runs.  Table on the game
+ * heap, pointer at 0x4F3FC0 (magic 'QD01').  Read with tools/gdb/qd_dump.py.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+#define QD_N 512
+#define QD_R 160
+#define QD_MAGIC 0x31304451u
+typedef struct { u32 key, frame; u32 v[8]; u8 chL, streak, pad[2]; } QdRec;   /* 44 bytes */
+typedef struct { u32 task, lr, tex; u16 mask, n; } QdRep;                        /* 16 bytes */
+typedef struct { u32 magic, hits, lost, pad; QCnt c[64]; QdRec r[QD_N]; QdRep rep[QD_R]; } QdTab;
+#define QD_HEAP (*(volatile u32 *)0x004F3FC0u)
+void quad_detect(u32 *f)
+{
+    u32 hp = QD_HEAP;
+    if (hp == 1) return;
+    if (hp < 0x00100000u || *(u32 *)hp != QD_MAGIC) {
+        hp = GameAlloc_abs(0x100, 0x100, 0, sizeof(QdTab), 1);
+        if (hp < 0x00100000u) { QD_HEAP = 1; return; }
+        for (u32 i = 0; i < sizeof(QdTab); i += 4) *(u32 *)(hp + i) = 0;
+        *(u32 *)hp = QD_MAGIC;
+        QD_HEAP = hp;
+    }
+    QdTab *T = (QdTab *)hp;
+    u32 tex = *(volatile u32 *)(*(volatile u32 *)0x0044EA00u + 0x11E4);
+    u32 base = (tex * 0x9E3779B1u ^ f[4] * 0x27D4EB2Fu ^ f[5] * 0x165667B1u ^ f[6] * 0x85EBCA77u ^ f[7] * 0xC2B2AE3Du) | 1;
+    u32 fr = S->counter, occ = 0;
+    QCnt *c = &T->c[base >> 26];
+    if (c->stamp != fr) { c->stamp = fr; c->base = base; c->n = 1; }
+    else if (c->base == base) occ = c->n++;
+    u32 key = base + occ * 0x61C88647u;
+    QdRec *r = &T->r[(key >> 23) & (QD_N - 1)];
+    u32 v[8] = { f[0], f[1], f[2], f[3], f[16], f[17], f[18], f[19] };
+    if (r->key != key) {
+        r->key = key; r->frame = fr; r->chL = r->streak = 0;
+        for (int k = 0; k < 8; k++) r->v[k] = v[k];
+        return;
+    }
+    if (r->frame == fr) return;                        /* second draw this frame (other eye) */
+    u32 mask = 0;
+    if (r->frame + 1 == fr) {
+        if (v[0] != r->v[0] || v[1] != r->v[1]) mask |= 1;
+        if (v[2] != r->v[2] || v[3] != r->v[3]) mask |= 2;
+        for (int k = 4; k < 8; k++) if (v[k] != r->v[k]) mask |= 4;
+    } else r->chL = r->streak = 0;
+    if (S->logic) r->chL = mask;
+    else {
+        if (r->chL && !mask) {
+            if (++r->streak == 3) {                    /* 3 ticks changing at 30 Hz: report */
+                u32 cur = *(volatile u32 *)0x004E3CFCu;
+                u32 task = cur >= 0x00100000u ? *(u32 *)(cur + 0x3C) : 0, lr = f[21];
+                QdRep *e = 0;
+                for (int i = 0; i < QD_R; i++) {
+                    QdRep *q = &T->rep[i];
+                    if (q->n && q->task == task && q->lr == lr) { e = q; break; }
+                    if (!q->n) { e = q; e->task = task; e->lr = lr; e->tex = tex; break; }
+                }
+                if (e) { e->mask |= r->chL; if (e->n != 0xFFFF) e->n++; T->hits++; }
+                else T->lost++;
+            }
+        } else r->streak = 0;
+        r->chL = 0;
+    }
+    r->frame = fr;
+    for (int k = 0; k < 8; k++) r->v[k] = v[k];
+}
+#endif
 
 /* Material classification cache (mat_pattern): 128 x {res, cls|cnt<<1}
  * on the game heap; pointer at 0x4F0FF0 (magic 'DFR1', layout kept). */
