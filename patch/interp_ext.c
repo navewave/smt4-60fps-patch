@@ -1016,7 +1016,8 @@ void quad_detect(u32 *f)
         if (r->chL && !mask) {
             if (++r->streak == 3) {                    /* 3 ticks changing at 30 Hz: report */
                 u32 cur = *(volatile u32 *)0x004E3CFCu;
-                u32 task = cur >= 0x00100000u ? *(u32 *)(cur + 0x3C) : 0, ch[6] = { f[21], 0, 0, 0, 0, 0 }, pos = 22;
+                u32 task = cur >= 0x00100000u ? *(u32 *)(cur + 0x3C) : 0, ch[6], pos = 22;
+                ch[0] = f[21]; ch[1] = ch[2] = ch[3] = ch[4] = ch[5] = 0;
                 for (int l = 1; l < 6; l++) {
                     int j = 0;
                     while (j < 9 && QD_WALK[j][0] != ch[l - 1]) j++;
