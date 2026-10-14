@@ -3,7 +3,7 @@
     SMT4_VER=1.1 python3 build_release.py NAME
 Outputs in out/ (suffix _v11 for 1.1):
   NAME_code.ips         60 fps + camera (needs NAME_exheader.bin as mods/<tid>/exheader.bin)
-  NAME_exheader.bin     bss +0x2000 (camera page 0x4F1000, extension page 0x4F2000), ir:rst added
+  NAME_exheader.bin     bss +0x3000 (camera page 0x4F1000, extension pages 0x4F2000/0x4F3000), ir:rst added
   NAME_60fps_only.ips   60 fps without camera / camera-page features (no exheader needed)
   NAME_code_hw.ips      real-hardware subset (core only)
 """
@@ -78,7 +78,7 @@ B.write_ips(patches + cam, f'{ROOT}/out/{NAME}{SFX}_code.ips')
 
 exh = bytearray(open(B.EXH, 'rb').read())
 bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == 0x797F0, hex(bss)
-struct.pack_into('<I', exh, 0x3C, bss + 0x2000)
+struct.pack_into('<I', exh, 0x3C, bss + 0x3000)   # pages 0x4F1000, 0x4F2000, 0x4F3000
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'

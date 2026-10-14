@@ -847,7 +847,7 @@ __attribute__((noinline)) static void dc_restore(void)
         NODE_FLAGS(r->cam) |= FLAG_LOCAL_DIRTY;
     }
 }
-#pragma clang section text=".ext.text" rodata=".ext.rodata"
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
 __attribute__((noinline)) static void dc_swap(u32 t)
 {
     for (int i = 0; i < 2; i++) {
@@ -870,6 +870,58 @@ __attribute__((noinline)) static void dc_swap(u32 t)
         r->sw = ok && ch;
         if (!r->sw) for (int k = 0; k < 6; k++) *p[k] = r->tru[k];
         NODE_FLAGS(cam) |= FLAG_LOCAL_DIRTY;
+    }
+}
+
+/* ---------------------------------------------------------------------
+ * Event portraits (talk bust-ups, Burroughs): "EVE_2dTex" work *(0x43DED0),
+ * child handles at +4.., count +0x2C.  Each child's calc (FUN_001DFB60,
+ * 30 Hz) steps work +0x10 (int slide x), +0x1C (decaying offset) and +0x24
+ * (alpha, or the zoom scale when +0x64 is set); "EVE_2dTexDraw"
+ * (FUN_002857F4) reads them every frame.  Midpoint on logic frames.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"   /* third extra page: needs the exheader */
+typedef struct { u32 w, tick, sw; u32 last[3], tru[3]; } PtRec;
+#define PT ((PtRec *)0x004F3F00u)                /* 4 * 36 bytes, ext5 data */
+static const u8 PT_OFF[3] = { 0x10, 0x1C, 0x24 };
+extern u32 TaskWork(u32 handle);                 /* FUN_002C0AC8 */
+__attribute__((noinline)) static void pt_swap(u32 t)
+{
+    u32 e = *(volatile u32 *)0x0043DED0u;
+    for (int i = 0; i < 4; i++) {
+        PtRec *r = &PT[i];
+        u32 w = e >= 0x00100000u && i < *(int *)(e + 0x2C) ? TaskWork(*(u32 *)(e + 4 + i * 4)) : 0;
+        r->sw = 0;
+        if (w < 0x00100000u) { r->w = 0; continue; }
+        int ok = r->w == w && r->tick == t - 1, ch = 0;
+        r->w = w; r->tick = t;
+        u32 m[3];
+        for (int k = 0; k < 3; k++) {
+            u32 c = *(u32 *)(w + PT_OFF[k]), l = r->last[k];
+            r->tru[k] = c; r->last[k] = c; m[k] = c;
+            if (c == l) continue;
+            ch = 1;
+            if (!k) {                                    /* int slide x */
+                int d = (int)c - (int)l;
+                if (d > 400 || d < -400) ok = 0;
+                m[k] = (u32)((int)l + d / 2);
+            } else {
+                float d = f_of(c) - f_of(l);
+                if (d * d > 16.0f) ok = 0;
+                m[k] = b_of(f_of(l) + d * 0.5f);
+            }
+        }
+        if (!ok || !ch) continue;
+        for (int k = 0; k < 3; k++) *(u32 *)(w + PT_OFF[k]) = m[k];
+        r->sw = 1;
+    }
+}
+__attribute__((noinline)) static void pt_restore(void)
+{
+    for (PtRec *r = PT; r < PT + 4; r++) {
+        if (!r->sw) continue;
+        r->sw = 0;
+        for (int k = 0; k < 3; k++) *(u32 *)(r->w + PT_OFF[k]) = r->tru[k];
     }
 }
 
@@ -977,7 +1029,7 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
-        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); }
+        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); }
     }
     for (int i = 0; i < NWATCH; i++) {
         const WatchDef *d = &WDEF[i];
@@ -1020,7 +1072,7 @@ void ext_watch_restore(SprTab *T)
     }
     epl_reset_corners();
     bg_restore();
-    if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); }
+    if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); pt_restore(); }
     if (CAMPAGE == 1) mif_restore();
     if (ROT_ANY) { ROT_ANY = 0; rot_restore(); }
 }

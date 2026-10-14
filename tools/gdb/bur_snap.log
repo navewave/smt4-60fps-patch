@@ -1,0 +1,8 @@
+The target architecture is set to "armv6k".
+warning: Target description specified unknown osabi "3DS"
+warning: No executable has been specified and target does not support
+determining executable automatically.  Try using the "file" command.
+0x002a88a8 in ?? ()
+work=00000000 state=tools/gdb/bur_snap.gdb:2: Error in sourced command file:
+Cannot access memory at address 0x5ec
+[Inferior 1 (Remote target) detached]

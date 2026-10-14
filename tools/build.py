@@ -15,7 +15,9 @@ EXT3 = 0x4F1580       # third region, inside the camera page after the camera co
 EXT3_END = 0x4F1E80    # 0x4F1E80-0x4F1F00: BCAM data; 0x4F1F00: camera state
 EXT4 = 0x4F2000       # fourth region: second extra page (exheader bss +0x2000)
 EXT4_END = 0x4F2E00    # 0x4F2E00-0x4F3000: scale records (SCL)
-MEM_END = 0x4F3000    # Azahar resizes code.bin to cover the bss pages before applying the IPS
+EXT5 = 0x4F3000       # fifth region: third extra page (exheader bss +0x3000)
+EXT5_END = 0x4F3F00    # 0x4F3F00-0x4F4000: ext5 data (portrait records)
+MEM_END = 0x4F4000    # Azahar resizes code.bin to cover the bss pages before applying the IPS
 LLD = 'ld.lld.exe' if os.name == 'nt' else 'ld.lld'   # Windows does not add .exe to a name that has a dot
 
 # ---- game version -------------------------------------------------------
@@ -90,7 +92,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
         subprocess.check_call(cmd)
         objs.append(obj)
     lds = f'{ROOT}/build/cave.ld'
-    open(lds, 'w').write('SECTIONS { . = 0x%X; .text : { *(.text.cave) *(.text*) *(.rodata*) } . = 0x%X; .ext2 : { *(.ext2.text*) *(.ext2.rodata*) } . = 0x%X; .ext : { *(.ext.text*) *(.ext.rodata*) } . = 0x%X; .ext3 : { *(.ext3.text*) *(.ext3.rodata*) } . = 0x%X; .ext4 : { *(.ext4.text*) *(.ext4.rodata*) } /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }\n' % (CAVE, EXT2, EXT, EXT3, EXT4))
+    open(lds, 'w').write('SECTIONS { . = 0x%X; .text : { *(.text.cave) *(.text*) *(.rodata*) } . = 0x%X; .ext2 : { *(.ext2.text*) *(.ext2.rodata*) } . = 0x%X; .ext : { *(.ext.text*) *(.ext.rodata*) } . = 0x%X; .ext3 : { *(.ext3.text*) *(.ext3.rodata*) } . = 0x%X; .ext4 : { *(.ext4.text*) *(.ext4.rodata*) } . = 0x%X; .ext5 : { *(.ext5.text*) *(.ext5.rodata*) } /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }\n' % (CAVE, EXT2, EXT, EXT3, EXT4, EXT5))
     ld = [ LLD, '-o', elf, '-T', lds, '-e', '0', '--no-rosegment', '-N' ] + objs
     for k, v in GAME_SYMS.items():
         ld += ['--defsym', f'{k}=0x{P(v):X}']
@@ -121,13 +123,16 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     subprocess.check_call(['llvm-objcopy', '-O', 'binary', '--only-section=.ext4', elf, f'{ROOT}/build/{out_prefix}.ext4.bin'])
     ext4 = open(f'{ROOT}/build/{out_prefix}.ext4.bin', 'rb').read()
     assert EXT4 + len(ext4) <= EXT4_END, 'ext4 overflow'
+    subprocess.check_call(['llvm-objcopy', '-O', 'binary', '--only-section=.ext5', elf, f'{ROOT}/build/{out_prefix}.ext5.bin'])
+    ext5 = open(f'{ROOT}/build/{out_prefix}.ext5.bin', 'rb').read()
+    assert EXT5 + len(ext5) <= EXT5_END, 'ext5 overflow'
     data = bytearray(open(ORIG, 'rb').read())
     orig_len = len(data)
     data += bytes(MEM_END - BASE - len(data))      # bss pages as Azahar's loader sees them
     assert data[CAVE - BASE: CAVE - BASE + len(cave)] == bytes(len(cave)), 'cave not empty'
     assert data[EXT - BASE: EXT - BASE + len(ext)] == bytes(len(ext)), 'ext area not empty'
     assert data[EXT2 - BASE: EXT2 - BASE + len(ext2)] == bytes(len(ext2)), 'ext2 area not empty'
-    print(f'core {len(cave)}/{CAVE_END-CAVE} bytes, ext {len(ext)}/{EXT_END-EXT} bytes, ext2 {len(ext2)}/{EXT2_END-EXT2} bytes, ext3 {len(ext3)}/{EXT3_END-EXT3}, ext4 {len(ext4)}/{EXT4_END-EXT4} bytes')
+    print(f'core {len(cave)}/{CAVE_END-CAVE} bytes, ext {len(ext)}/{EXT_END-EXT} bytes, ext2 {len(ext2)}/{EXT2_END-EXT2} bytes, ext3 {len(ext3)}/{EXT3_END-EXT3}, ext4 {len(ext4)}/{EXT4_END-EXT4}, ext5 {len(ext5)}/{EXT5_END-EXT5} bytes')
 
     patches = []  # (addr, bytes)
     patches.append((CAVE, cave))
@@ -136,6 +141,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     if ext2: patches.append((EXT2, ext2)); emu_addrs.add(EXT2)
     if ext3: patches.append((EXT3, ext3)); emu_addrs.add(EXT3)
     if ext4: patches.append((EXT4, ext4)); emu_addrs.add(EXT4)
+    if ext5: patches.append((EXT5, ext5)); emu_addrs.add(EXT5)
     for s in sites:
         addr, kind = P(s['addr']), s['kind']
         orig = struct.unpack_from('<I', data, addr - BASE)[0]
