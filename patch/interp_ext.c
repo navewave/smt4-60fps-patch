@@ -883,17 +883,20 @@ __attribute__((noinline)) static void dc_swap(u32 t)
  *    +0x3C centre, +0x58 x offset, +0x1C/+0x20 half size, +0x28/+0x88
  *    alpha; drawn by FUN_001DBB54.
  * The prio-2 task list is walked on logic frames; listed fields are drawn
- * at the midpoint of the last two ticks and put back at run-end.
+ * at the midpoint of the last two ticks and put back at run-end.  A tick
+ * that changes a portrait's state words (texture, mode, crossfade flag)
+ * is not blended: an expression change starts its crossfade by jumping the
+ * old face's alpha +0x88 from 0 to 1 together with the texture swap.
  * --------------------------------------------------------------------- */
 #pragma clang section text=".ext5.text" rodata=".ext5.rodata"   /* third extra page: needs the exheader */
 #define PT_NF 8
 #define PT_N  12
-typedef struct { u32 w, tick, sw; u32 last[PT_NF], tru[PT_NF]; } PtRec;   /* 76 bytes */
-#define PT ((PtRec *)0x004F3C00u)                /* 12 * 76 bytes, ext5 data */
-typedef struct { u32 fn; u8 nint, n, off[PT_NF]; } PtDef;   /* first nint fields are ints */
+typedef struct { u32 w, tick, sw, sig; u32 last[PT_NF], tru[PT_NF]; } PtRec;   /* 80 bytes */
+#define PT ((PtRec *)0x004F3C00u)                /* 12 * 80 bytes, ext5 data */
+typedef struct { u32 fn; u8 nint, n, off[PT_NF], g[4]; } PtDef;   /* first nint fields are ints; g = state words */
 static const PtDef PT_DEF[2] = {
-    { 0x001DFB60u, 1, 3, { 0x10, 0x1C, 0x24 } },
-    { 0x001CE3A4u, 0, 8, { 0x34, 0x38, 0x3C, 0x58, 0x1C, 0x20, 0x28, 0x88 } },
+    { 0x001DFB60u, 1, 3, { 0x10, 0x1C, 0x24 }, { 0x0C, 0x3C, 0x40, 0x48 } },
+    { 0x001CE3A4u, 0, 8, { 0x34, 0x38, 0x3C, 0x58, 0x1C, 0x20, 0x28, 0x88 }, { 0x0C, 0x24, 0x80, 0x8C } },
 };
 __attribute__((noinline)) static void pt_swap(u32 t)
 {
@@ -902,8 +905,10 @@ __attribute__((noinline)) static void pt_swap(u32 t)
         u32 fn = *(u32 *)(k + 0x3C), w = *(u32 *)(k + 0x48);
         const PtDef *d = fn == PT_DEF[0].fn ? &PT_DEF[0] : fn == PT_DEF[1].fn ? &PT_DEF[1] : 0;
         if (!d || w < 0x00100000u) continue;
-        int ok = r->w == w && r->tick == t - 1, ch = 0;
-        r->w = w; r->tick = t; r->sw = 0;
+        u32 sig = 0;
+        for (int g = 0; g < 4; g++) sig = (sig << 7 | sig >> 25) ^ *(u32 *)(w + d->g[g]);
+        int ok = r->w == w && r->tick == t - 1 && r->sig == sig, ch = 0;
+        r->w = w; r->tick = t; r->sw = 0; r->sig = sig;
         u32 m[PT_NF];
         for (int f = 0; f < d->n; f++) {
             u32 c = *(u32 *)(w + d->off[f]), l = r->last[f];
