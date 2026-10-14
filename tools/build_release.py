@@ -1,6 +1,6 @@
 """Release build: 60 fps + right-stick camera, for game 1.0 or 1.1.
     python3 build_release.py NAME            (1.0)
-    SMT4_VER=1.1 python3 build_release.py NAME
+    SMT4_REGION=us11|eu|jp|kr|tw python3 build_release.py NAME   (see tools/regions.py)
 Outputs in out/ (suffix _v11 for 1.1):
   NAME_code.ips         60 fps + camera (needs NAME_exheader.bin as mods/<tid>/exheader.bin)
   NAME_exheader.bin     bss +0x4000 (camera page 0x4F1000, extension pages 0x4F2000-0x4F4000), ir:rst added
@@ -15,8 +15,7 @@ SFX = B.SUFFIX
 B.GAME_SYMS.update({'UpdateFrame_cont':0x368810,'SetPosA_cont':0x28C8B0,'SetPosB_cont':0x29A2B8,
     'GetGameCamera':0x2C5218,'ModelCalc':0x115B74,'CamSetLookAt_abs':0x2C20A8,'CamUpdateStereo_abs':0x2BCBB0,'CamSetProj_abs':0x2C1FFC,
     'GameAlloc_abs':0x2C4B84,'Anim_cont':0x2BF9F4,'AnimSlide_cont':0x2B9224,'AnimV2_cont':0x295390,
-    'AnimV3_cont':0x29652C,'BeforeDraw_cont':0x103B5C,'EplUpdate_cont':0x1929C0,'CellDraw_cont':0x2AF8D4,
-    'CellPut':0x2BF460,'SprDrawA_cont':0x2B970C,'BustDraw_cont':0x1DBB58,'TaskWork':0x2C0AC8,'SprDrawB_cont':0x3883C4,'SetMtx2D':0x2B9438,'QuadFn_cont':0x2B1594,'SetScale_cont':0x25C0F4,'TaskAlive':0x2BF41C,
+    'AnimV3_cont':0x29652C,'BeforeDraw_cont':0x103B5C,'CellPut':0x2BF460,'QuadFn_cont':0x2B1594,'SetScale_cont':0x25C0F4,'TaskAlive':0x2BF41C,
     'CellA_cont':0x2BF464,'CellB_cont':0x2BF55C,'CellC_cont':0x2B06A4,'CellW_cont':0x2B090C})
 ns = {}
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_phase1.py')).read().split('patches, syms')[0], ns)
@@ -38,13 +37,13 @@ patches, syms, cave = B.build([f'{B.ROOT}/patch/phase3b.S', f'{B.ROOT}/patch/int
                                f'{B.ROOT}/patch/interp_thumb.c', f'{B.ROOT}/patch/interp_ext.c'],
                               SITES + ns['BOOT'], NAME)
 ROOT = B.ROOT
-B.write_ips([p for p in patches if p[0] < 0x4F1000], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
+B.write_ips([p for p in patches if p[0] < B.P(0x4F1000)], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
 hw = B.hw_patches(patches)
 B.write_ips(hw, f'{ROOT}/out/{NAME}{SFX}_code_hw.ips')
 print('hw patches', len(hw), 'of', len(patches))
 
 # ---- right-stick camera at page 0x4F1000 ----
-PAGE, CODE_AT, STATE_AT = 0x4F1000, 0x4F1020, 0x4F1F00
+PAGE, CODE_AT, STATE_AT = B.P(0x4F1000), B.P(0x4F1020), B.P(0x4F1F00)
 bd = f'{ROOT}/build/cam_{NAME}{SFX}'; os.makedirs(bd, exist_ok=True)
 sh = lambda *a: subprocess.check_call(list(a))
 sh('clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', '-Oz', '-ffreestanding',
@@ -78,10 +77,10 @@ for site10, expect, sym in CSITES:
 B.write_ips(patches + cam, f'{ROOT}/out/{NAME}{SFX}_code.ips')
 
 exh = bytearray(open(B.EXH, 'rb').read())
-bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == 0x797F0, hex(bss)
+bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == B.R['bss'], hex(bss)
 struct.pack_into('<I', exh, 0x3C, bss + 0x4000)   # pages 0x4F1000 .. 0x4F4000
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'
 open(f'{ROOT}/out/{NAME}{SFX}_exheader.bin', 'wb').write(exh)
-print(f'version {B.VER}: camera {len(code)} bytes; outputs out/{NAME}{SFX}_*')
+print(f'version {B.R["name"]} ({B.REGION}, {B.R["tid"]}): camera {len(code)} bytes; outputs out/{NAME}{SFX}_*')

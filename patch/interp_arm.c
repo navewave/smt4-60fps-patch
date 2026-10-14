@@ -6,8 +6,9 @@
 #define NODE_FLAGS(n) (*(volatile u32 *)((n) + 0x88))
 #define THR2 (150.0f * 150.0f)
 
-/* 1 if 0 < |a-b|^2 <= THR2 for 3-vectors with element strides sa/sb (in floats). */
-static __attribute__((noinline)) int near3(const float *a, int sa, const float *b, int sb)
+/* 1 if 0 < |a-b|^2 <= THR2 for 3-vectors with element strides sa/sb (in floats).
+ * Inlined: saves 36 bytes of cave (EUR has only 2400). */
+static inline int near3(const float *a, int sa, const float *b, int sb)
 {
     float d2 = 0.0f;
     for (int k = 0; k < 3; k++) { float e = a[k * sa] - b[k * sb]; d2 += e * e; }

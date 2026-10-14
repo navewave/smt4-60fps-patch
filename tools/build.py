@@ -23,42 +23,50 @@ MEM_END = 0x4F5000    # Azahar resizes code.bin to cover the bss pages before ap
 LLD = 'ld.lld.exe' if os.name == 'nt' else 'ld.lld'   # Windows does not add .exe to a name that has a dot
 
 # ---- game version -------------------------------------------------------
-# SMT4_VER=1.1 builds for the 1.1 update: every game address in the sources and
-# build scripts is translated with v11/addrmap.json (made by v11/mapall.py:
-# code matched by masked instruction windows, data by literal-pool votes).
-VER = os.environ.get('SMT4_VER', '1.0')
-EXH = f'{ROOT}/game/v10/exheader.bin'
+# SMT4_REGION selects the game version (tools/regions.py): us10 (default), us11,
+# eu, jp, kr, tw.  SMT4_VER=1.1 is kept as an alias for us11.  The sources use
+# USA 1.0 addresses; for other versions every game address is translated with
+# ports/<region>.json (tools/port.py), the cave and rodata tail come from the
+# version's exheader, and the patch's own memory (STATE block 0x4EFE38.., pages
+# 0x4F0000-0x4F5000) moves with the end of its .bss.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regions import region
+REGION = os.environ.get('SMT4_REGION') or ('us11' if os.environ.get('SMT4_VER') == '1.1' else 'us10')
+R = region(REGION)
+VER = REGION
+ORIG, EXH, SUFFIX = R['code'], R['exh'], R['suffix']
+CAVE, CAVE_END, EXT2, EXT2_END = R['cave'], R['cave_end'], R['ext2'], R['ext2_end']
+SD, PD = R['state_delta'], R['page_delta']
+EXT, EXT_END, EXT3, EXT3_END, EXT4, EXT4_END = (a + PD for a in (EXT, EXT_END, EXT3, EXT3_END, EXT4, EXT4_END))
+EXT5, EXT5_END, EXT6, EXT6_END, MEM_END = (a + PD for a in (EXT5, EXT5_END, EXT6, EXT6_END, MEM_END))
 ADDRMAP = {}
-if VER == '1.1':
-    ORIG = f'{ROOT}/game/v11/decompressed_code.bin'
-    EXH = f'{ROOT}/game/v11/exheader.bin'
-    CAVE = 0x3FE3F8           # 1.1 .text ends at 0x3FE3F8
-    EXT2 = 0x42AF30           # 1.1 .rodata ends at 0x42AF30
-    ADDRMAP = {int(k, 16): int(v, 16) for k, v in json.load(open(f'{ROOT}/v11/addrmap.json')).items()}
-    ADDRMAP.update({0x103B58: 0x103BD4, 0x103B5C: 0x103BD8, 0x2B9438: 0x2B90F8, 0x102438: 0x102438, 0x10B578: 0x10B5E8})
-SUFFIX = '' if VER == '1.0' else '_v11'
+if REGION != 'us10':
+    ADDRMAP = {int(k, 16): int(v, 16) for k, v in json.load(open(f'{ROOT}/ports/{REGION}.json')).items()}
 
 def P(a):
-    """1.0 game address -> address in the selected version"""
-    if VER == '1.0' or not (0x100000 <= a < 0x4F0000): return a
+    """USA 1.0 address -> address in the selected version"""
+    if REGION == 'us10': return a
+    if 0x4EFE38 <= a < 0x4F0000: return a + SD           # patch STATE block
+    if 0x4F0000 <= a < 0x4F5000: return a + PD           # patch pages
+    if not (0x100000 <= a < 0x4EFE38): return a
     if a in ADDRMAP: return ADDRMAP[a]
-    if a >= 0x42B000: return a            # .data/.bss layout is unchanged in 1.1
-    raise SystemExit(f'no 1.1 mapping for {a:#x}')
+    raise SystemExit(f'no {REGION} mapping for {a:#x} (run tools/port.py {REGION})')
 
 def subst_source(path):
-    """copy of a source file with its game addresses translated"""
-    if VER == '1.0': return path
+    """copy of a source file with its game and patch-memory addresses translated"""
+    if REGION == 'us10': return path
     import re
-    txt = open(path).read()
+    txt = open(path, encoding='utf-8').read()
     def rep(m):
         v = int(m.group(2), 16)
-        if v in ADDRMAP and ADDRMAP[v] != v:
-            return m.group(1) + ('%0*X' % (len(m.group(2)), ADDRMAP[v]))
+        if v in ADDRMAP or 0x4EFE38 <= v < 0x4F5000:
+            n = P(v)
+            if n != v: return m.group(1) + ('%0*X' % (len(m.group(2)), n))
         return m.group(0)
     txt = re.sub(r'(0[xX])([0-9A-Fa-f]{6,8})(?![0-9A-Fa-f])', rep, txt)
-    os.makedirs(f'{ROOT}/build/v11src', exist_ok=True)
-    out = f'{ROOT}/build/v11src/' + os.path.basename(path)
-    open(out, 'w').write(txt)
+    os.makedirs(f'{ROOT}/build/{REGION}src', exist_ok=True)
+    out = f'{ROOT}/build/{REGION}src/' + os.path.basename(path)
+    open(out, 'w', encoding='utf-8').write(txt)
     return out
 
 def masked_same(w1, w2):
@@ -82,7 +90,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     elf = f'{ROOT}/build/{out_prefix}.elf'
     srcs = phase_src if isinstance(phase_src, (list, tuple)) else [phase_src]
     objs = []
-    if VER != '1.0': subst_source(f'{ROOT}/patch/interp.h')
+    if REGION != 'us10': subst_source(f'{ROOT}/patch/interp.h')
     for i, src in enumerate(srcs):
         obj = f'{ROOT}/build/{out_prefix}.{i}.o'
         src = subst_source(src)
@@ -151,7 +159,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     for s in sites:
         addr, kind = P(s['addr']), s['kind']
         orig = struct.unpack_from('<I', data, addr - BASE)[0]
-        if VER == '1.0':
+        if REGION == 'us10':
             assert orig == s['expect'], f"site {addr:#x}: expected {s['expect']:#010x} got {orig:#010x}"
         else:
             assert masked_same(s['expect'], orig), f"site {s['addr']:#x}->{addr:#x}: 1.0 {s['expect']:#010x} vs 1.1 {orig:#010x}"
