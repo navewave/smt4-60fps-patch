@@ -1,6 +1,0 @@
-reports: 4 sites, 99 runs, 0 lost (table full)
- runs  task                           screen what                      x,y  caller
-   72  001fc480                       bottom pos                 95,   194  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 004f419c FUN_003fe018+0xf6184 <- 0039d6ec FUN_0039d2ec+0x400
-   22  001fc480                       bottom pos               -149,     2  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 004f419c FUN_003fe018+0xf6184 <- 0039d4a4 FUN_0039d2ec+0x1b8
-    4  btlUI DrawDown                 bottom pos                255,   143  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 004f4058 FUN_003fe018+0xf6040 <- 002be458 caseD_6+0x18c
-    1  SAVELOAD_UI D                  bottom pos                515,    81  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b0778 FUN_002b06a0+0xd8 <- 004f4130 FUN_003fe018+0xf6118 <- 002b6c64 FUN_002b6a98+0x1cc
