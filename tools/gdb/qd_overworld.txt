@@ -1,0 +1,11 @@
+reports: 9 sites, 664 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+  452  001fc480                       bottom pos                122,   124  caseD_7+0x50c via FUN_002c1ca0
+  103  BIBLE DEVIL DOWN               bottom pos                 38,    28  caseD_7+0x50c via FUN_002c1ca0
+   55  BIBLE DEVIL DOWN               bottom pos/size           215,    24  FUN_002af8d0+0x7ac via FUN_002b7a10
+   27  Status DrawUpLeft/Status DrawU top    pos                 48,   118  caseD_7+0x50c via FUN_002c1ca0
+   13  MESS_U LEFT/MESS_U RIGHT       top    pos                336,     4  caseD_7+0x50c via FUN_002c1ca0
+   10  btlUI DrawDown                 bottom size               297,    24  caseD_7+0x50c via FUN_002c1ca0
+    2  001a15b0                       top    pos                332,   129  caseD_7+0x50c via FUN_002c1ca0
+    1  ButtonHelp DDRAW               bottom pos                216,   243  caseD_7+0x50c via FUN_002c1ca0
+    1  ButtonHelp DDRAW               bottom pos/size             4,   220  FUN_002af8d0+0x7ac via FUN_002b7a10
