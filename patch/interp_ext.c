@@ -874,54 +874,67 @@ __attribute__((noinline)) static void dc_swap(u32 t)
 }
 
 /* ---------------------------------------------------------------------
- * Event portraits (talk bust-ups, Burroughs): "EVE_2dTex" work *(0x43DED0),
- * child handles at +4.., count +0x2C.  Each child's calc (FUN_001DFB60,
- * 30 Hz) steps work +0x10 (int slide x), +0x1C (decaying offset) and +0x24
- * (alpha, or the zoom scale when +0x64 is set); "EVE_2dTexDraw"
- * (FUN_002857F4) reads them every frame.  Midpoint on logic frames.
+ * Event portraits.  Their logic tasks (prio 2) step plain fields of the
+ * task work at 30 Hz and their draw tasks read them every frame:
+ *  - "EVE_2dTex" children, calc FUN_001DFB60 (talk bust-ups, Burroughs):
+ *    +0x10 int slide x, +0x1C decaying offset, +0x24 alpha (zoom scale
+ *    when +0x64 is set); drawn by FUN_002857F4.
+ *  - "EVE_BustupTex", calc FUN_001CE3A4 (BustupCutAnim scenes): +0x34..
+ *    +0x3C centre, +0x58 x offset, +0x1C/+0x20 half size, +0x28/+0x88
+ *    alpha; drawn by FUN_001DBB54.
+ * The prio-2 task list is walked on logic frames; listed fields are drawn
+ * at the midpoint of the last two ticks and put back at run-end.
  * --------------------------------------------------------------------- */
 #pragma clang section text=".ext5.text" rodata=".ext5.rodata"   /* third extra page: needs the exheader */
-typedef struct { u32 w, tick, sw; u32 last[3], tru[3]; } PtRec;
-#define PT ((PtRec *)0x004F3F00u)                /* 4 * 36 bytes, ext5 data */
-static const u8 PT_OFF[3] = { 0x10, 0x1C, 0x24 };
-extern u32 TaskWork(u32 handle);                 /* FUN_002C0AC8 */
+#define PT_NF 8
+#define PT_N  12
+typedef struct { u32 w, tick, sw; u32 last[PT_NF], tru[PT_NF]; } PtRec;   /* 76 bytes */
+#define PT ((PtRec *)0x004F3C00u)                /* 12 * 76 bytes, ext5 data */
+typedef struct { u32 fn; u8 nint, n, off[PT_NF]; } PtDef;   /* first nint fields are ints */
+static const PtDef PT_DEF[2] = {
+    { 0x001DFB60u, 1, 3, { 0x10, 0x1C, 0x24 } },
+    { 0x001CE3A4u, 0, 8, { 0x34, 0x38, 0x3C, 0x58, 0x1C, 0x20, 0x28, 0x88 } },
+};
 __attribute__((noinline)) static void pt_swap(u32 t)
 {
-    u32 e = *(volatile u32 *)0x0043DED0u;
-    for (int i = 0; i < 4; i++) {
-        PtRec *r = &PT[i];
-        u32 w = e >= 0x00100000u && i < *(int *)(e + 0x2C) ? TaskWork(*(u32 *)(e + 4 + i * 4)) : 0;
-        r->sw = 0;
-        if (w < 0x00100000u) { r->w = 0; continue; }
+    PtRec *r = PT;
+    for (u32 k = *(volatile u32 *)(*(volatile u32 *)0x004E3CF4u + 2 * 8); k && r < PT + PT_N; k = *(u32 *)(k + 0x4C)) {
+        u32 fn = *(u32 *)(k + 0x3C), w = *(u32 *)(k + 0x48);
+        const PtDef *d = fn == PT_DEF[0].fn ? &PT_DEF[0] : fn == PT_DEF[1].fn ? &PT_DEF[1] : 0;
+        if (!d || w < 0x00100000u) continue;
         int ok = r->w == w && r->tick == t - 1, ch = 0;
-        r->w = w; r->tick = t;
-        u32 m[3];
-        for (int k = 0; k < 3; k++) {
-            u32 c = *(u32 *)(w + PT_OFF[k]), l = r->last[k];
-            r->tru[k] = c; r->last[k] = c; m[k] = c;
+        r->w = w; r->tick = t; r->sw = 0;
+        u32 m[PT_NF];
+        for (int f = 0; f < d->n; f++) {
+            u32 c = *(u32 *)(w + d->off[f]), l = r->last[f];
+            r->tru[f] = c; r->last[f] = c; m[f] = c;
             if (c == l) continue;
             ch = 1;
-            if (!k) {                                    /* int slide x */
-                int d = (int)c - (int)l;
-                if (d > 400 || d < -400) ok = 0;
-                m[k] = (u32)((int)l + d / 2);
+            if (f < d->nint) {
+                int dd = (int)c - (int)l;
+                if (dd > 400 || dd < -400) ok = 0;
+                m[f] = (u32)((int)l + dd / 2);
             } else {
-                float d = f_of(c) - f_of(l);
-                if (d * d > 16.0f) ok = 0;
-                m[k] = b_of(f_of(l) + d * 0.5f);
+                float dd = f_of(c) - f_of(l);
+                if (dd * dd > THR2) ok = 0;
+                m[f] = b_of(f_of(l) + dd * 0.5f);
             }
         }
-        if (!ok || !ch) continue;
-        for (int k = 0; k < 3; k++) *(u32 *)(w + PT_OFF[k]) = m[k];
-        r->sw = 1;
+        if (ok && ch) {
+            for (int f = 0; f < d->n; f++) *(u32 *)(w + d->off[f]) = m[f];
+            r->sw = d->n;
+        }
+        r++;
     }
+    for (; r < PT + PT_N; r++) r->w = 0;
 }
 __attribute__((noinline)) static void pt_restore(void)
 {
-    for (PtRec *r = PT; r < PT + 4; r++) {
+    for (PtRec *r = PT; r < PT + PT_N; r++) {
         if (!r->sw) continue;
+        const PtDef *d = r->sw == 3 ? &PT_DEF[0] : &PT_DEF[1];
+        for (int f = 0; f < d->n; f++) *(u32 *)(r->w + d->off[f]) = r->tru[f];
         r->sw = 0;
-        for (int k = 0; k < 3; k++) *(u32 *)(r->w + PT_OFF[k]) = r->tru[k];
     }
 }
 

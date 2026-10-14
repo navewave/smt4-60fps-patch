@@ -16,7 +16,7 @@ EXT3_END = 0x4F1E80    # 0x4F1E80-0x4F1F00: BCAM data; 0x4F1F00: camera state
 EXT4 = 0x4F2000       # fourth region: second extra page (exheader bss +0x2000)
 EXT4_END = 0x4F2E00    # 0x4F2E00-0x4F3000: scale records (SCL)
 EXT5 = 0x4F3000       # fifth region: third extra page (exheader bss +0x3000)
-EXT5_END = 0x4F3F00    # 0x4F3F00-0x4F4000: ext5 data (portrait records)
+EXT5_END = 0x4F3C00    # 0x4F3C00-0x4F4000: ext5 data (portrait records 0x4F3C00-0x4F3F90)
 MEM_END = 0x4F4000    # Azahar resizes code.bin to cover the bss pages before applying the IPS
 LLD = 'ld.lld.exe' if os.name == 'nt' else 'ld.lld'   # Windows does not add .exe to a name that has a dot
 
