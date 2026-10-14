@@ -178,6 +178,17 @@ __asm__(
 "    b     UpdateFrame_cont\n"
 #endif
 "1:  vmul.f32 s0, s0, s1\n"                 /* half step */
+"    ldr   r12, =0x004EFE38\n"
+"    ldrb  r12, [r12, #4]\n"
+"    cmp   r12, #0\n"
+"    bne   UpdateFrame_cont\n"              /* logic frame */
+"    ldr   r12, =0x004F0FC4\n"              /* CAMPAGE: updf_half lives in an extra page */
+"    ldrb  r12, [r12]\n"
+"    cmp   r12, #1\n"
+"    bne   UpdateFrame_cont\n"
+"    push  {r0, r1, r2, r3, r12, lr}\n"
+"    bl    updf_half\n"                     /* s0 = step, possibly shortened */
+"    pop   {r0, r1, r2, r3, r12, lr}\n"
 "    b     UpdateFrame_cont\n"
 "    .ltorg\n"
 );
@@ -1192,6 +1203,34 @@ __attribute__((noinline)) static void ci_install(void)
     ci_hook(0x002BF558u, 0xE92D4FFFu, ext_cell_b);
     ci_hook(0x002B06A0u, 0xE92D40F0u, ext_cell_c);
     ci_hook(0x002B0908u, 0xE92D41F0u, ext_cell_w);
+}
+
+/* ---------------------------------------------------------------------
+ * Animation ends on in-between frames.  A half step can carry a camera (or
+ * light, fog...) animation past its last frame on an in-between frame; its
+ * policy then wraps it to the start for one frame before the 30 Hz logic
+ * switches shots on the next logic frame (terminal teleport: one-frame
+ * camera jump).  Non-skeletal anims stop just inside their range on
+ * in-between frames; skeletal loops (walk, idle) are left alone.
+ * Diagnostics: count at 0x4F3FD0, last anim at 0x4F3FD4.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext6.text" rodata=".ext6.rodata"
+float updf_half(u32 anim, float step)
+{
+    u32 g = *(volatile u32 *)(anim + 8);
+    if (heap_ptr(g) && name2(bin_str(*(volatile u32 *)(g + 8), 8)) == N2('S','k')) return step;
+    float f = *(volatile float *)(anim + 0x38), nf = f + step, lim;
+    if (step > 0.0f) {
+        lim = *(volatile float *)(anim + 0x48) - 0.01f;
+        if (nf < lim || f > lim + 0.02f) return step;     /* not at the end / outside the range already */
+    } else {
+        lim = *(volatile float *)(anim + 0x44) + 0.01f;
+        if (nf > lim || f < lim - 0.02f) return step;
+    }
+    (*(volatile u32 *)0x004F3FD0u)++;
+    *(volatile u32 *)0x004F3FD4u = anim;
+    float d = lim - f;
+    return (step > 0.0f) == (d > 0.0f) ? d : 0.0f;        /* never step backwards */
 }
 
 /* Material classification cache (mat_pattern): 128 x {res, cls|cnt<<1}
