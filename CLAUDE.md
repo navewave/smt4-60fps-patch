@@ -37,7 +37,7 @@ python3 tools/build_release.py phase8                       # USA 1.0
 SMT4_REGION=us11 python3 tools/build_release.py phase8      # also eu, jp, kr, tw -> out/phase8_<region>_*
 python3 tools/port.py <region>                              # regenerate ports/<region>.json after adding addresses
 python3 tools/verify_region.py                              # check runtime hook points in every version
-python3 tools/package.py 8                                  # releases/SMT4_60fps_8_<VERSION>.zip (patch + cheats + README)
+python3 tools/package.py 8                                  # releases/SMT4_60fps_8_<VERSION>.zip: Azahar_full, Real_3DS, cheats, README (60fps_only no longer shipped)
 ```
 - New game addresses in the sources must be USA 1.0 addresses; re-run `tools/port.py` for every region afterwards.
 - Patch memory moves per version: STATE = .bss end + 4 (JPN 0x4F0D18, TWN 0x4F0D38), pages 0x4F0000.. shift +0x1000 for JPN/TWN. Core cave: EUR has only 2400 bytes (core is 2376).

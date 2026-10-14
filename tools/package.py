@@ -1,7 +1,8 @@
 """Package a built release for every version.
     python tools/package.py BUILD     (expects out/phaseBUILD[_<region>]_* from build_release.py)
 Writes releases/SMT4_60fps_<BUILD>_<VERSION>.zip, one per version, each with
-Azahar_full, Azahar_60fps_only, Real_3DS, Cheats and a README."""
+Azahar_full, Real_3DS, Cheats and a README.  (build_release.py still makes
+NAME_60fps_only.ips; it is no longer shipped.)"""
 import os, sys, shutil, zipfile, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from regions import region, REGIONS, ROOT
@@ -26,7 +27,7 @@ README = """SMT IV 60 FPS patch - build {build} (stable) - {name}
 Game: Shin Megami Tensei IV, {name} (title {tid})
 Game logic still runs at 30 Hz (original speed); the in-between frames are interpolated.
 
-Pick ONE of the three patch folders:
+Pick ONE of the two patch folders:
 
 1) Azahar_full  (recommended for Azahar: 60 fps + all smoothing fixes + right-stick camera)
    Copy the folder "{tid}" into:  Azahar/load/mods/
@@ -36,13 +37,7 @@ Pick ONE of the three patch folders:
    exheader.bin is REQUIRED. Without it the game will not start
    (log shows "Failed to load ROM (Error 12)"). Always replace both files together.
 
-2) Azahar_60fps_only  (Azahar, no exheader needed)
-   Same location, only exefs/code.ips. 60 fps and most smoothing, but no
-   right-stick camera and none of the fixes that need the extra memory
-   (torch fix, stats zoom fix, generic menu slide smoothing, field tiles,
-   backdrop pans, portrait and UI smoothing).
-
-3) Real_3DS  (Luma3DS)
+2) Real_3DS  (Luma3DS)
    Copy to SD:  /luma/titles/{tid}/code.ips
    Enable "Enable game patching" in the Luma config (hold SELECT at boot).
    Basic 60 fps (logic gate, camera/model/sprite interpolation) only. The other
@@ -79,13 +74,13 @@ def package(key):
     R = region(key)
     tid, sfx = R['tid'], R['suffix']
     out = lambda kind: f'{ROOT}/out/phase{BUILD}{sfx}_{kind}'
-    for k in ('code.ips', 'exheader.bin', '60fps_only.ips', 'code_hw.ips'):
+    for k in ('code.ips', 'exheader.bin', 'code_hw.ips'):
         if not os.path.exists(out(k)): raise SystemExit(f'missing {out(k)}: run SMT4_REGION={key} python tools/build_release.py phase{BUILD}')
     name = f'SMT4_60fps_{BUILD}_{LABEL[key]}'
     stage = f'{ROOT}/build/pkg/{name}'
     shutil.rmtree(stage, ignore_errors=True)
     files = {f'Azahar_full/{tid}/exefs/code.ips': out('code.ips'), f'Azahar_full/{tid}/exheader.bin': out('exheader.bin'),
-             f'Azahar_60fps_only/{tid}/exefs/code.ips': out('60fps_only.ips'), f'Real_3DS/{tid}/code.ips': out('code_hw.ips')}
+             f'Real_3DS/{tid}/code.ips': out('code_hw.ips')}
     for dst, src in files.items():
         os.makedirs(os.path.dirname(f'{stage}/{dst}'), exist_ok=True); shutil.copy(src, f'{stage}/{dst}')
     blocks = [b for b in cheat_blocks() if CHEAT_TAG[key](b[0])]
