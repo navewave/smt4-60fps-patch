@@ -22,10 +22,10 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 | `v11/` | 1.0→1.1 address porting: `port.py`, `mapnew.py --write`, `addrmap.json`. |
 | `game/v10`, `game/v11` | The owner's own decompressed code.bin + exheader.bin. **Do not publish** (copyrighted game code). |
 | `re/` | Ghidra project, exported decompilation (`dump/decomp.c`, 24 MB), disassembly (`dump/text.asm`), Ghidra scripts. Not for publishing either. |
-| `releases/` | Released zips (6b USA 1.0 / 1.1). |
+| `releases/` | Released zips (6b USA 1.0 / 1.1, 7d USA 1.0). |
 | `docs/notes/` | Detailed research notes. Start with `SMT4_60fps_findings.md`. |
 | `docs/RE_SETUP.md` | How to connect Ghidra (MCP) and Azahar's GDB stub for runtime debugging. |
-| `tools/gdb/` | GDB probe scripts for Azahar's stub (`sh tools/gdb/gdb.sh tools/gdb/X.gdb`): ping, code (which build is loaded), tasks (live task list), watch/log probes. |
+| `tools/gdb/` | GDB probe scripts for Azahar's stub (`sh tools/gdb/gdb.sh tools/gdb/X.gdb`): ping, tasks (live task list), watch/log probes; `whichbuild.py` reports which out/*_code.ips is running. |
 | `tools/cadence.py` | Per-region 30/60 Hz analysis of an OBS clip. |
 | `re/dump/taskfuncs.txt` | Task function -> task name map (from the registration calls). |
 
@@ -55,7 +55,7 @@ SMT4_VER=1.1 python3 tools/build_release.py phase6b     # USA 1.1 -> out/phase6b
   - phase 0 = BeforeDraw1L (0x103B58, prio 0x65), before AsdModelCalcProc (0x67)
   - phase 1 = CAMPDL draw (0x108A64)
   - run-end restore = 0x1031F4
-- **Save states** hold the whole memory, patch included: a save state made with an older build runs the older patch. Verify the loaded build (`tools/gdb/code.gdb`) before judging a test.
+- **Save states** hold the whole memory, patch included: a save state made with an older build runs the older patch. Verify the loaded build (`python tools/gdb/whichbuild.py`) before judging a test.
 - **IMPORTANT RULE:** `ext_watch_swap` (phase 0) runs **only on logic frames**, because the core `spr_swap` returns early otherwise. Ext features must record their "previous" value on the logic frame and blend between the last logic-frame value and the current one. Five past attempts failed because they recorded on in-between frames, which never run there. Hooks on draw/quad functions do run every frame.
 - **Core vs. extension:**
   - The core sits in the text cave and works on hardware.
