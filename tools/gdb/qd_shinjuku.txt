@@ -1,0 +1,11 @@
+reports: 9 sites, 33 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+   18  001fc480                       bottom pos                  9,   111  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 0039d6ec FUN_0039d2ec+0x400
+    4  001fc480                       bottom pos                345,  -177  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 0039d4a4 FUN_0039d2ec+0x1b8
+    4  TMD DDRAW                      bottom pos/size             0,     0  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf6a8 FUN_002bf558+0x150 <- 001f201c FUN_001f1fc8+0x54
+    2  Status DrawUpLeft/Status DrawU top    pos/size          -252,   184  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002b09a8 FUN_002b0908+0xa0 <- 001a5434 FUN_001a310c+0x2328
+    1  ButtonHelp DDRAW               bottom pos                216,   243  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 001913dc FUN_00190d48+0x694
+    1  ButtonHelp DDRAW               bottom pos/size             4,   220  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf548 FUN_002bf460+0xe8 <- 002b9c6c FUN_002b9708+0x564
+    1  btlUI DrawDown                 bottom size                66,    37  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 00288f58 FUN_00288b10+0x448
+    1  TMD DDRAW                      bottom pos/size             0,    36  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf548 FUN_002bf460+0xe8 <- 001f2200 FUN_001f1fc8+0x238
+    1  TMD DDRAW                      bottom pos/size             0,    56  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf548 FUN_002bf460+0xe8 <- 001f21dc FUN_001f1fc8+0x214

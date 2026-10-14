@@ -3,7 +3,7 @@
     SMT4_VER=1.1 python3 build_release.py NAME
 Outputs in out/ (suffix _v11 for 1.1):
   NAME_code.ips         60 fps + camera (needs NAME_exheader.bin as mods/<tid>/exheader.bin)
-  NAME_exheader.bin     bss +0x3000 (camera page 0x4F1000, extension pages 0x4F2000/0x4F3000), ir:rst added
+  NAME_exheader.bin     bss +0x4000 (camera page 0x4F1000, extension pages 0x4F2000-0x4F4000), ir:rst added
   NAME_60fps_only.ips   60 fps without camera / camera-page features (no exheader needed)
   NAME_code_hw.ips      real-hardware subset (core only)
 """
@@ -16,7 +16,8 @@ B.GAME_SYMS.update({'UpdateFrame_cont':0x368810,'SetPosA_cont':0x28C8B0,'SetPosB
     'GetGameCamera':0x2C5218,'ModelCalc':0x115B74,'CamSetLookAt_abs':0x2C20A8,'CamUpdateStereo_abs':0x2BCBB0,'CamSetProj_abs':0x2C1FFC,
     'GameAlloc_abs':0x2C4B84,'Anim_cont':0x2BF9F4,'AnimSlide_cont':0x2B9224,'AnimV2_cont':0x295390,
     'AnimV3_cont':0x29652C,'BeforeDraw_cont':0x103B5C,'EplUpdate_cont':0x1929C0,'CellDraw_cont':0x2AF8D4,
-    'CellPut':0x2BF460,'SprDrawA_cont':0x2B970C,'BustDraw_cont':0x1DBB58,'TaskWork':0x2C0AC8,'SprDrawB_cont':0x3883C4,'SetMtx2D':0x2B9438,'QuadFn_cont':0x2B1594,'SetScale_cont':0x25C0F4,'TaskAlive':0x2BF41C})
+    'CellPut':0x2BF460,'SprDrawA_cont':0x2B970C,'BustDraw_cont':0x1DBB58,'TaskWork':0x2C0AC8,'SprDrawB_cont':0x3883C4,'SetMtx2D':0x2B9438,'QuadFn_cont':0x2B1594,'SetScale_cont':0x25C0F4,'TaskAlive':0x2BF41C,
+    'CellA_cont':0x2BF464,'CellB_cont':0x2BF55C,'CellC_cont':0x2B06A4,'CellW_cont':0x2B090C})
 ns = {}
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_phase1.py')).read().split('patches, syms')[0], ns)
 SITES = ns['SITES'] + [
@@ -78,7 +79,7 @@ B.write_ips(patches + cam, f'{ROOT}/out/{NAME}{SFX}_code.ips')
 
 exh = bytearray(open(B.EXH, 'rb').read())
 bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == 0x797F0, hex(bss)
-struct.pack_into('<I', exh, 0x3C, bss + 0x3000)   # pages 0x4F1000, 0x4F2000, 0x4F3000
+struct.pack_into('<I', exh, 0x3C, bss + 0x4000)   # pages 0x4F1000 .. 0x4F4000
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'

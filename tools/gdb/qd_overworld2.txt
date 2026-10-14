@@ -1,0 +1,10 @@
+reports: 8 sites, 53 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+   23  BIBLE DEVIL DOWN               bottom pos                294,    28  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf6a8 FUN_002bf558+0x150 <- 00230eb8 FUN_00230e54+0x64
+   19  BIBLE ANALYZE DOWN             bottom pos               -205,   140  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf6a8 FUN_002bf558+0x150 <- 00230eb8 FUN_00230e54+0x64
+    3  BIBLE ANALYZE DOWN             bottom pos               -220,    91  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b0778 FUN_002b06a0+0xd8 <- 002b6c04 FUN_002b6a98+0x16c
+    3  btlUI DrawDown                 bottom size               286,    37  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002b09a8 FUN_002b0908+0xa0 <- 00288f58 FUN_00288b10+0x448
+    2  BIBLE ANALYZE DOWN             bottom pos                 33,    46  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 002be458 caseD_6+0x18c
+    1  BIBLE DEVIL DOWN               bottom pos                 89,    48  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf548 FUN_002bf460+0xe8 <- 00290fac FUN_00290c38+0x374
+    1  BIBLE DEVIL DOWN               bottom pos                 88,    46  002b7a94 FUN_002b7a10+0x84 <- 002b007c FUN_002af8d0+0x7ac <- 002bf548 FUN_002bf460+0xe8 <- 00290cac FUN_00290c38+0x74
+    1  ButtonHelp DDRAW               bottom pos                216,   243  002c1d2c FUN_002c1ca0+0x8c <- 002a93b8 caseD_7+0x50c <- 002afc94 FUN_002af8d0+0x3c4 <- 002bf548 FUN_002bf460+0xe8 <- 001913dc FUN_00190d48+0x694
