@@ -5,7 +5,8 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 - Game logic stays at 30 Hz, so the original speed is kept. The patch renders 60 Hz and interpolates the in-between frames.
 - The patch is a binary IPS against the decompressed `.code`. Patch code is C plus ARM asm, compiled with clang/lld for ARMv6K + VFPv2 (hard float).
 - The owner tests every build in **Azahar** (Windows) and on a **New 3DS (Luma3DS)**.
-- Current stable release: **build 7d** (git tag `v7d-stable`, `releases/SMT4_60fps_7d_USA_v1.0.zip`). USA 1.0 tested on Azahar; the Real_3DS file of 7d has not been tested on hardware. USA 1.1 not yet rebuilt for 7d.
+- Last stable: **build 7d** (tag `v7d-stable`). Release candidate: **build 8** (tag `v8-rc`): 7d + cell-call smoothing (7e) + nav-map flag (7f), for USA 1.0, USA 1.1, EUR, JPN, KOR, TWN (`releases/SMT4_60fps_8_*.zip`). Needs a smoke test per version and one Real_3DS test before it is marked stable.
+- Versions: `tools/regions.py` (title IDs, files). Region game files live in `Other Regions Builds/` (private, gitignored).
 
 ## Directory map
 | Path | What |
@@ -32,9 +33,14 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 ## Build
 Requirements: Python 3, LLVM/clang with `clang`, `ld.lld`, `llvm-objcopy`, `llvm-objdump` and `llvm-nm` on PATH.
 ```
-python3 tools/build_release.py phase6b                  # USA 1.0
-SMT4_VER=1.1 python3 tools/build_release.py phase6b     # USA 1.1 -> out/phase6b_v11_*
+python3 tools/build_release.py phase8                       # USA 1.0
+SMT4_REGION=us11 python3 tools/build_release.py phase8      # also eu, jp, kr, tw -> out/phase8_<region>_*
+python3 tools/port.py <region>                              # regenerate ports/<region>.json after adding addresses
+python3 tools/verify_region.py                              # check runtime hook points in every version
+python3 tools/package.py 8                                  # releases/SMT4_60fps_8_<VERSION>.zip (patch + cheats + README)
 ```
+- New game addresses in the sources must be USA 1.0 addresses; re-run `tools/port.py` for every region afterwards.
+- Patch memory moves per version: STATE = .bss end + 4 (JPN 0x4F0D18, TWN 0x4F0D38), pages 0x4F0000.. shift +0x1000 for JPN/TWN. Core cave: EUR has only 2400 bytes (core is 2376).
 - Toolchain: native Windows works (clang 22.1.8). It does **not** reproduce the 6b release bytes (smaller code; hook sites identical). Builds from 7a on are the clang 22 baseline.
 - The build prints its region sizes. Hard limits:
   - core ≤ 2520 bytes (1.0)
