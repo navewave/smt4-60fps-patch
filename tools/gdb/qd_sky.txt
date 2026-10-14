@@ -1,0 +1,8 @@
+reports: 6 sites, 42 runs, 0 lost (table full)
+ runs  task                               what             caller (lr)
+   26  001fc480                           pos              002c1d2c FUN_002c1ca0+0x8c
+    6  TMD DDRAW                          pos/size         002b7a94 FUN_002b7a10+0x84
+    5  btlUI DrawDown                     size             002c1d2c FUN_002c1ca0+0x8c
+    3  Status DrawUpLeft/Status DrawUpRig pos/size         002b7a94 FUN_002b7a10+0x84
+    1  ButtonHelp DDRAW                   pos              002c1d2c FUN_002c1ca0+0x8c
+    1  ButtonHelp DDRAW                   pos/size         002b7a94 FUN_002b7a10+0x84

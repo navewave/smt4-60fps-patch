@@ -11,7 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 GDB = r"C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-gdb.exe"
 QD_PTR, QD_N, QD_R = 0x4F3FC0, 512, 160
 OFF_REP = 16 + 64 * 12 + QD_N * 44
-SIZE = OFF_REP + QD_R * 16
+SIZE = OFF_REP + QD_R * 32
 
 def gdb(cmds):
     tmp = tempfile.mkdtemp().replace(os.sep, '/')
@@ -47,12 +47,14 @@ def func_of(a):
 
 rows = []
 for i in range(QD_R):
-    task, lr, tex, mask, n = struct.unpack_from('<IIIHH', t, OFF_REP + i * 16)
+    task, lr, lr2, tex, x, y, prio, mask, _, n = struct.unpack_from('<IIIIffHBBH', t, OFF_REP + i * 32)
     if not n: break
     what = '/'.join(w for b, w in ((1, 'pos'), (2, 'size'), (4, 'colour')) if mask & b)
-    rows.append((n, task, lr, what, tex))
+    scr = 'top' if prio < 0xCB else 'top-R' if prio < 0xE5 else 'bottom'
+    rows.append((n, task, lr, lr2, what, scr, x, y))
 print(f'reports: {len(rows)} sites, {hits} runs, {lost} lost (table full)')
-print(f'{"runs":>5}  {"task":34} {"what":16} caller (lr)')
-for n, task, lr, what, tex in sorted(rows, reverse=True):
-    tn = '/'.join(sorted(names.get(task, {f'{task:08x}'})))[:34]
-    print(f'{n:5d}  {tn:34} {what:16} {lr:08x} {func_of(lr)}')
+print(f'{"runs":>5}  {"task":30} {"screen":6} {"what":15} {"x,y":>13}  caller')
+for n, task, lr, lr2, what, scr, x, y in sorted(rows, reverse=True):
+    tn = '/'.join(sorted(names.get(task, {f'{task:08x}'})))[:30]
+    c = func_of(lr2) + ' via ' + func_of(lr).split('+')[0] if lr2 else func_of(lr)
+    print(f'{n:5d}  {tn:30} {scr:6} {what:15} {x:6.0f},{y:6.0f}  {c}')

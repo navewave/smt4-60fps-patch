@@ -957,7 +957,8 @@ __attribute__((noinline)) static void pt_restore(void)
  * r12, lr.  Tracks every 2D quad by texture + uv + occurrence and compares
  * what is drawn (after smoothing) frame to frame.  A quad that changes on
  * logic frames but not on the in-between frames for 3 ticks in a row is
- * reported as {current task fn, caller lr, mask}: mask 1 = position,
+ * reported as {task fn, caller lr, its caller lr2 when lr is a rect-draw
+ * wrapper, texture, last x/y, task prio, mask}: mask 1 = position,
  * 2 = size, 4 = colour/alpha; n = number of such runs.  Table on the game
  * heap, pointer at 0x4F3FC0 (magic 'QD01').  Read with tools/gdb/qd_dump.py.
  * --------------------------------------------------------------------- */
@@ -966,7 +967,7 @@ __attribute__((noinline)) static void pt_restore(void)
 #define QD_R 160
 #define QD_MAGIC 0x31304451u
 typedef struct { u32 key, frame; u32 v[8]; u8 chL, streak, pad[2]; } QdRec;   /* 44 bytes */
-typedef struct { u32 task, lr, tex; u16 mask, n; } QdRep;                        /* 16 bytes */
+typedef struct { u32 task, lr, lr2, tex, x, y; u16 prio; u8 mask, pad; u16 n, pad2; } QdRep;   /* 32 bytes */
 typedef struct { u32 magic, hits, lost, pad; QCnt c[64]; QdRec r[QD_N]; QdRep rep[QD_R]; } QdTab;
 #define QD_HEAP (*(volatile u32 *)0x004F3FC0u)
 void quad_detect(u32 *f)
@@ -1008,13 +1009,15 @@ void quad_detect(u32 *f)
             if (++r->streak == 3) {                    /* 3 ticks changing at 30 Hz: report */
                 u32 cur = *(volatile u32 *)0x004E3CFCu;
                 u32 task = cur >= 0x00100000u ? *(u32 *)(cur + 0x3C) : 0, lr = f[21];
+                /* rect-draw wrappers: their saved lr above our 22-word frame */
+                u32 lr2 = lr == 0x002C1D2Cu ? f[22 + 15] : lr == 0x002B7A94u ? f[22 + 11] : 0;
                 QdRep *e = 0;
                 for (int i = 0; i < QD_R; i++) {
                     QdRep *q = &T->rep[i];
-                    if (q->n && q->task == task && q->lr == lr) { e = q; break; }
-                    if (!q->n) { e = q; e->task = task; e->lr = lr; e->tex = tex; break; }
+                    if (q->n && q->task == task && q->lr == lr && q->lr2 == lr2) { e = q; break; }
+                    if (!q->n) { e = q; e->task = task; e->lr = lr; e->lr2 = lr2; e->tex = tex; e->prio = cur >= 0x00100000u ? *(u32 *)(cur + 0x20) : 0; break; }
                 }
-                if (e) { e->mask |= r->chL; if (e->n != 0xFFFF) e->n++; T->hits++; }
+                if (e) { e->mask |= r->chL; e->x = v[0]; e->y = v[1]; if (e->n != 0xFFFF) e->n++; T->hits++; }
                 else T->lost++;
             }
         } else r->streak = 0;
