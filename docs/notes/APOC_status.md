@@ -1,7 +1,7 @@
 # SMT IV: Apocalypse (USA, 000400000019A200): port status
 
 Files (private, gitignored): `Shin Megami Tensei IV - Apocalypse/` (`code.bin` decompressed, `exheader.bin` from the decrypted .3ds).
-Build: `SMT4_REGION=apoc python tools/build_release.py phase8`; core-only Azahar test: add `SMT4_CFLAGS=-DNO_EMU_CHECK` and use `*_code_hw.ips`.
+Build: `SMT4_REGION=apoc python tools/build_release.py phase8` (first test build, made before builds 9-12); core-only Azahar test: add `SMT4_CFLAGS=-DNO_EMU_CHECK` and use `*_code_hw.ips`.
 
 ## How close is it to SMT IV
 - Same engine and task system (214 of SMT IV's task names exist), but only ~43 % of SMT IV's code survives as identical instruction runs: recompiled and reordered (functions moved by up to MBs). `tools/port.py` uses a whole-file window search for it (`glob`).
@@ -21,3 +21,9 @@ Main loop gate (input, fades, play time, sound, task gate, run-end), boot vsync 
 - New position setter 0x36BB20 goes through node helper 0x44B3C8, bypassing SetPos hooks: some characters may move at 30 Hz.
 - Extension features read game structs that may have changed (event work, scene manager 0x5B3BF4, task list 0x640118): the full build is the riskier one.
 - New systems not handled: partner attacks, h3dModelDraw renderer, EvtSnowNoise / EvtAlart / EvtFilter.
+
+## Next: bring builds 9-12 over (SMT IV is at build 12, 2026-10-14)
+- Re-run `python tools/port.py apoc`: build 12 added `CurveEval` (FUN_00235794, cutscene camera cut test) to the game symbols; it needs an apoc mapping (or a MANUAL entry).
+- Cutscene cameras: check that Apocalypse also drives them with NW4C "CameraAnimation" (`SMT4_CFLAGS=-DCAMLOG` build + `python tools/gdb/cam_dump.py --anims` during a cutscene), then the teleport-style cut test applies as is.
+- Actual 3DS: `SMT4_REGION=apoc python tools/build_plugin.py <name>` should work (it diffs the Azahar and hardware IPS, finds the gate words by pattern); check the cave tail has 8 free bytes for the gate trampoline and that STATE/page addresses are translated (subst_source).
+- Test order that worked for SMT IV: Azahar first (whichbuild.py, GDB probes), then the N3DS; read Luma crash dumps from SD:/luma/dumps/arm11/.

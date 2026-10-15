@@ -145,7 +145,12 @@ Ext data words:
 - **Fixed in 7a–7d** (see `docs/notes/SMT4_7d_review.md`): diorama backdrops (camera tween FUN_00341C74), event portraits (EVE_2dTex, EVE_BustupTex) incl. Burroughs, expression crossfades.
 - **Not fixable:** pre-rendered moflex videos (`Move` task).
 - **Open candidates** from the 7d review: battle background following the battle camera, player lights, 2D zooms / vertex-colour fades outside the sprite animators.
-- **Not done:** EUR/JPN versions (waiting for code.bin + exheader.bin per version); 1.1 play test.
+- **Open items (after build 12, 2026-10-14):**
+  - Stats screen bars end early, show a random frame and loop on the N3DS (not investigated; check Azahar first, then the 30 Hz detector / anim classes).
+  - N3DS consistency: "steady frame-rate" mode in plugin_gate.c (lock vsync to 30 fps on repeated drops, retry 60 every ~2 s). Measurement build (CPU vs GPU) not done. Busy menus (Y menu over the field) fall to 30 fps on N3DS: performance, not missing smoothing (detector found nothing in Azahar).
+  - README: warn that the USA 1.1 zip is only for consoles with the eShop update (the owner's N3DS crashed at boot with the 1.1 files on a 1.0 game: same title ID, wrong code.ips).
+  - Actual-3DS builds of EUR/JPN/KOR/TWN/USA 1.1 are untested on hardware; Azahar tested on USA 1.0 only.
+  - Apocalypse port: docs/notes/APOC_status.md.
 
 ## Working with the owner
 - The owner tests and reports by eye ("30 Hz", "jumpy", "flicker"). Short 60 fps clips are recorded with Azahar → Tools → Dump Video or OBS. The clips are AV1: decode with `ffmpeg -c:v libdav1d`. Frame-difference per screen region shows what updates only every 2nd frame.
