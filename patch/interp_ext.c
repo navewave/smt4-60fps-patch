@@ -168,11 +168,12 @@ u32 updf_class(u32 anim)
 #ifdef CAMLOG
     an_log(anim, g);
 #endif
-    /* cutscene cameras (NW4C CameraAnimation): whole frames, so each logic
-     * tick shows the game's own keyframed camera.  At half frames the curve
-     * between the last key of one shot and the first key of the next is
-     * sampled, which drew a made-up camera at every cut (cam_cut below). */
-    if (n1 == N2('C','a') || n2 == N2('C','a')) { CAMANIM_TICK = tick_now(); return 1; }
+    /* cutscene cameras (NW4C CameraAnimation): class 2, ca_step() below.  They
+     * are smooth only because of half steps: the camera is written from the
+     * anim inside the scene update (ModelCalc), after the core's cam_swap and
+     * dc_swap, so no blend of ours shows.  (Build 10 gave them whole frames
+     * and cutscenes dropped to 30 Hz.) */
+    if (n1 == N2('C','a') || n2 == N2('C','a')) { CAMANIM_TICK = tick_now(); return 2; }
 #if UPDF_MODE == 3
     if (n1 == N2('V','i') || n2 == N2('V','i')) return 1;
     /* materials: whole frames, except in battle (heat haze, glows), where
@@ -207,12 +208,19 @@ __asm__(
 "    pop   {r0, r1, r2, r3, lr}\n"
 "    cmp   r12, #0\n"
 "    beq   1f\n"
+"    cmp   r12, #2\n"
+"    beq   2f\n"
 "    ldr   r12, =0x004EFE38\n"              /* integer frames */
 "    ldrb  r12, [r12, #4]\n"
 "    cmp   r12, #0\n"
 "    bne   UpdateFrame_cont\n"              /* logic frame: full step */
 "    mov   r12, #0\n"
 "    vmov  s0, r12\n"                       /* in-between: no step */
+"    b     UpdateFrame_cont\n"
+"2:  vmul.f32 s0, s0, s1\n"                 /* cutscene camera: half step unless near a cut */
+"    push  {r0, r1, r2, r3, r12, lr}\n"
+"    bl    ca_step\n"                       /* (anim r0, half step s0) -> step s0 */
+"    pop   {r0, r1, r2, r3, r12, lr}\n"
 "    b     UpdateFrame_cont\n"
 #endif
 "1:  vmul.f32 s0, s0, s1\n"                 /* half step */
@@ -1352,6 +1360,80 @@ static void battle_check(void)
  * animation) are never touched.
  * --------------------------------------------------------------------- */
 #pragma clang section text=".ext6.text" rodata=".ext6.rodata"
+/* ---------------------------------------------------------------------
+ * Cutscene camera steps (class 2 in updf_class).  Half steps put each logic
+ * frame's camera at k+0.5, between two keyframes: smooth on a pan, but at a
+ * cut (keys k and k+1 from different shots) the curve between them is a
+ * camera that never existed (the terminal teleport's one-frame "zoom"; with
+ * cubic keys it reaches one key further either side).  On a logic frame whose
+ * sample would touch a cut, the step is 0 (the frame shows key k) and the
+ * following in-between frame takes the whole step (key k+1): the cut falls
+ * exactly between two frames.  Cuts are found from the animation itself:
+ * every curve of the ResAnim is evaluated with the game's evaluator at whole
+ * frames around k, and a jump much larger than its neighbours is a cut.
+ * --------------------------------------------------------------------- */
+extern float CurveEval(u32 curve, float frame);     /* FUN_00235794 (frame s0 -> value s0) */
+typedef struct { u32 debt_anim, res, frame, cut; } CaRec;
+#define CA ((volatile CaRec *)0x004F2FB0u)          /* after SCL (ends 0x4F2FB0), before SCL_ANY */
+static int curve_cut(u32 c, float k)
+{
+    float v[6];
+    for (int i = 0; i < 6; i++) v[i] = CurveEval(c, k - 2.0f + (float)i);
+    for (int a = 1; a <= 3; a++) {                  /* intervals [k-1,k], [k,k+1], [k+1,k+2] */
+        float d = v[a + 1] - v[a], p = v[a] - v[a - 1], n = v[a + 2] - v[a + 1];
+        d = d < 0.0f ? -d : d; p = p < 0.0f ? -p : p; n = n < 0.0f ? -n : n;
+        float m = p > n ? p : n;
+        if (d > 2.0f && d > 6.0f * m) return 1;
+    }
+    return 0;
+}
+static int anim_cut(u32 res, float k)
+{
+    if (!heap_ptr(res)) return 0;
+    int cnt = *(volatile int *)(res + 0x18), o = *(volatile int *)(res + 0x1C);
+    if (cnt <= 0 || cnt > 64 || !off_ok(o)) return 0;
+    u32 dict = res + 0x1C + o;
+    for (int i = 0; i < cnt; i++) {
+        u32 e = dict + 0x28 + i * 0x10;
+        int eo = *(volatile int *)e;
+        if (!off_ok(eo)) return 0;
+        u32 m = e + eo, ty = *(volatile u32 *)(m + 8), fl = *(volatile u32 *)m;
+        static const unsigned char NC[8] = { 1, 0, 0, 2, 3, 9, 4, 0 };   /* components per member type */
+        int nc = ty < 8 ? NC[ty] : 0;
+        for (int j = 0; j < nc; j++) {
+            if (ty == 5) { if (fl & ((0x40u << j) | (0x10000u << j))) continue; }   /* transform: constant / absent */
+            else {
+                if (fl & (1u << j)) continue;                                       /* constant */
+                if (ty != 0 && (fl & (1u << (nc + j)))) continue;                   /* absent */
+            }
+            u32 sl = m + 0xC + 4 * j;
+            int co = *(volatile int *)sl;
+            if (!co || !off_ok(co)) continue;
+            u32 c = sl + co;
+            if (*(volatile u32 *)(c + 0xC) & 3) continue;                           /* compound / skip */
+            if (curve_cut(c, k)) return 1;
+        }
+    }
+    return 0;
+}
+float ca_step(u32 anim, float half)
+{
+    volatile CaRec *R = CA;
+    if (!S->logic) {                                 /* in-between frame: pay back a held step */
+        if (R->debt_anim == anim) { R->debt_anim = 0; return half + half; }
+        return half;
+    }
+    if (!(half > 0.0f)) return half;
+    float f = *(volatile float *)(anim + 0x38);
+    float k = (float)(int)(f + 0.25f);               /* logic frames start on a whole frame */
+    u32 res = *(volatile u32 *)(anim + 0x54);
+    int cut;
+    if (R->res == res && R->frame == *(u32 *)&k) cut = R->cut;   /* same anim and frame: cached */
+    else { cut = anim_cut(res, k); R->res = res; R->frame = *(u32 *)&k; R->cut = cut; }
+    if (!cut) return half;
+    R->debt_anim = anim;
+    return 0.0f;
+}
 typedef struct { u32 tick, cam; float d[6], fov, df; } CutRec;        /* 40 bytes */
 #define CUT ((volatile CutRec *)0x004F3FD8u)                          /* up to 0x4F4000 */
 __attribute__((noinline)) static void cam_cut(u32 t)

@@ -16,7 +16,8 @@ B.GAME_SYMS.update({'UpdateFrame_cont':0x368810,'SetPosA_cont':0x28C8B0,'SetPosB
     'GetGameCamera':0x2C5218,'ModelCalc':0x115B74,'CamSetLookAt_abs':0x2C20A8,'CamUpdateStereo_abs':0x2BCBB0,'CamSetProj_abs':0x2C1FFC,
     'GameAlloc_abs':0x2C4B84,'Anim_cont':0x2BF9F4,'AnimSlide_cont':0x2B9224,'AnimV2_cont':0x295390,
     'AnimV3_cont':0x29652C,'BeforeDraw_cont':0x103B5C,'CellPut':0x2BF460,'QuadFn_cont':0x2B1594,'SetScale_cont':0x25C0F4,'TaskAlive':0x2BF41C,
-    'CellA_cont':0x2BF464,'CellB_cont':0x2BF55C,'CellC_cont':0x2B06A4,'CellW_cont':0x2B090C})
+    'CellA_cont':0x2BF464,'CellB_cont':0x2BF55C,'CellC_cont':0x2B06A4,'CellW_cont':0x2B090C,
+    'CurveEval':0x235794})
 ns = {}
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build_phase1.py')).read().split('patches, syms')[0], ns)
 SITES = ns['SITES'] + [

@@ -6,7 +6,7 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 - The patch is a binary IPS against the decompressed `.code`. Patch code is C plus ARM asm, compiled with clang/lld for ARMv6K + VFPv2 (hard float).
 - The owner tests every build in **Azahar** (Windows) and on a **New 3DS (Luma3DS)**.
 - Last stable: **build 7d** (tag `v7d-stable`). Build 8 = public v1.0 assets as first uploaded (Azahar full + core-only Real_3DS).
-- Current: **build 10** = 8 + the full extension on an actual 3DS (3GX plugin, `src/plugin_main.c`), frame-time logic gate (hardware), clean cutscene camera cuts. Tested: Azahar USA 1.0, New 3DS USA 1.0. Other versions build but are untested.
+- Current: **build 12** = 8 + the full extension on an actual 3DS (3GX plugin, `src/plugin_main.c`), frame-time logic gate (hardware), clean cutscene camera cuts (ca_step). Tested: Azahar USA 1.0, New 3DS USA 1.0. Other versions build but are untested.
 - Versions: `tools/regions.py` (title IDs, files). Region game files live in `Other Regions Builds/` (private, gitignored).
 
 ## Directory map
@@ -94,6 +94,7 @@ python3 tools/package.py 10 --release 1.0                   # releases/SMT4_60fp
 | 0x4F3FCC / 0x4F3FD0 | camera log / anim-name table heap pointers (CAMLOG builds only) |
 | 0x4F3FD4 | CAMANIM_TICK: last tick a cutscene CameraAnimation stepped |
 | 0x4F3FD8 | CutRec (cam_cut history, 40 bytes, up to 0x4F4000) |
+| 0x4F2FB0 | CaRec (ca_step: held step, cut cache, 16 bytes) |
 
 Ext data words:
 | Address | Use |
@@ -140,7 +141,7 @@ Ext data words:
   - material/visibility anims outside battle (keeps torches and fire billboards correct)
   - flipbook-like materials in battle
   - EPL particle positions
-- **Camera cuts (10):** cutscene cameras are NW4C CameraAnimation ("Ca"); at half frames the curve between two shots' keys was sampled. updf_class gives them whole frames; cam_cut vetoes camera/fov blends on discontinuous moves while one runs. Diagnostic: `SMT4_CFLAGS=-DCAMLOG` + `tools/gdb/cam_dump.py`.
+- **Camera cuts (12):** cutscene cameras are NW4C CameraAnimation ("Ca") on the scene camera, written inside the scene update (ModelCalc), after cam_swap/dc_swap, so no blend of ours shows: they are smooth only through half anim steps. At a cut the k+0.5 sample is a camera between two shots. updf_class class 2 -> ca_step: on a logic frame whose sample touches a cut (curves evaluated with FUN_00235794 at whole frames k-2..k+3; jump > 2 and > 6x its neighbours) the step is 0 and the next in-between frame takes the whole step. Build 10 gave them whole frames instead: cutscenes dropped to 30 Hz (reverted). Diagnostic: `SMT4_CFLAGS=-DCAMLOG` + `tools/gdb/cam_dump.py` (--anims lists half-stepped anims).
 - **Fixed in 7a–7d** (see `docs/notes/SMT4_7d_review.md`): diorama backdrops (camera tween FUN_00341C74), event portraits (EVE_2dTex, EVE_BustupTex) incl. Burroughs, expression crossfades.
 - **Not fixable:** pre-rendered moflex videos (`Move` task).
 - **Open candidates** from the 7d review: battle background following the battle camera, player lights, 2D zooms / vertex-colour fades outside the sprite animators.
