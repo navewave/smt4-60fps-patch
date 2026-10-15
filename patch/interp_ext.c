@@ -9,6 +9,7 @@
 #include "interp.h"
 
 #define IN_BATTLE (*(volatile u8 *)0x004F0FF8u)   /* set at phase 0 (logic frames) */
+#define CAMANIM_TICK (*(volatile u32 *)0x004F3FD4u) /* last tick a cutscene camera animation stepped (updf_class) */
 #ifndef UPDF_MODE
 #define UPDF_MODE 3     /* 0 off, 1 hook with old behaviour, 2 "Sk" = smooth, 3 "Ma"/"Vi" = integer */
 #endif
@@ -130,11 +131,48 @@ static u32 mat_pattern(u32 res)
     C[h] = res; C[h + 1] = cls | ((u32)cnt << 1);
     return cls;
 }
+#ifdef CAMLOG
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+/* diagnostic: which anims step at half frames (vtable, group name, ResAnim
+ * target-group name), 32 slots on the heap, pointer at 0x4F3FD0 ('ANM1') */
+typedef struct { u32 vt, cnt, tick; char s1[8], s2[8]; } AnRec;   /* 28 bytes */
+static u32 heap_tab(volatile u32 *slot, u32 magic, u32 size);
+__attribute__((noinline)) static void an_log(u32 anim, u32 g)
+{
+    u32 hp = heap_tab((volatile u32 *)0x004F3FD0u, 0x314D4E41u, 16 + 32 * sizeof(AnRec));
+    if (!hp) return;
+    u32 s1 = heap_ptr(g) ? bin_str(*(volatile u32 *)(g + 8), 8) : 0;
+    u32 s2 = bin_str(*(volatile u32 *)(anim + 0x54), 0x0C);
+    u32 vt = *(volatile u32 *)anim, k1 = s1 ? *(volatile u32 *)s1 : 0, k2 = s2 ? *(volatile u32 *)s2 : 0;
+    AnRec *A = (AnRec *)(hp + 16);
+    for (int i = 0; i < 32; i++) {
+        AnRec *a = &A[i];
+        if (a->cnt && (a->vt != vt || *(u32 *)a->s1 != k1 || *(u32 *)a->s2 != k2)) continue;
+        if (!a->cnt) {
+            a->vt = vt;
+            for (int k = 0; k < 8; k++) { a->s1[k] = s1 ? *(volatile char *)(s1 + k) : 0; a->s2[k] = s2 ? *(volatile char *)(s2 + k) : 0; }
+            for (int k = 0; k < 8; k++) { if (!a->s1[k]) { for (; k < 8; k++) a->s1[k] = 0; } }
+            for (int k = 0; k < 8; k++) { if (!a->s2[k]) { for (; k < 8; k++) a->s2[k] = 0; } }
+        }
+        a->cnt++; a->tick = tick_now();
+        return;
+    }
+}
+#pragma clang section text=".ext4.text" rodata=".ext4.rodata"
+#endif
 u32 updf_class(u32 anim)
 {
     u32 g = *(volatile u32 *)(anim + 8);
     u32 n1 = heap_ptr(g) ? name2(bin_str(*(volatile u32 *)(g + 8), 8)) : 0;
     u32 n2 = name2(bin_str(*(volatile u32 *)(anim + 0x54), 0x0C));
+#ifdef CAMLOG
+    an_log(anim, g);
+#endif
+    /* cutscene cameras (NW4C CameraAnimation): whole frames, so each logic
+     * tick shows the game's own keyframed camera.  At half frames the curve
+     * between the last key of one shot and the first key of the next is
+     * sampled, which drew a made-up camera at every cut (cam_cut below). */
+    if (n1 == N2('C','a') || n2 == N2('C','a')) { CAMANIM_TICK = tick_now(); return 1; }
 #if UPDF_MODE == 3
     if (n1 == N2('V','i') || n2 == N2('V','i')) return 1;
     /* materials: whole frames, except in battle (heat haze, glows), where
@@ -279,9 +317,18 @@ static void epl_reset_corners(void)
 }
 
 /* ---------------------------------------------------------------------
- * Runtime hook installation (Azahar only).  svc 0x93 is
- * InvalidateInstructionCacheRange, which Azahar forwards to the JIT.
+ * Runtime hook installation.  svc 0x93 is InvalidateInstructionCacheRange,
+ * which Azahar forwards to the JIT.  On a real 3DS (extension loaded by the
+ * 3GX plugin, src/plugin_main.c, which sets EXT_HW) the new word must also
+ * be written back from the data cache first.  Luma3DS runs its by-address
+ * cache svcs (0x91/0x93) on every core, and on a core running another process
+ * the game address faults in the kernel (crash in "qtm", far = hook site), so
+ * hardware uses the whole-cache svcs 0x92 FlushEntireDataCache + 0x94
+ * InvalidateEntireInstructionCache, as Luma's own plugin start-up does.
+ * Hooks are installed a handful of times per boot, so the cost is negligible.
+ * Azahar does not implement 0x92, hence the flag.
  * --------------------------------------------------------------------- */
+#define EXT_HW (*(volatile u8 *)0x004EFFFCu)     /* after State (ends 0x4EFFF4) */
 
 static inline void put_branch(u32 site, u32 to)
 {
@@ -289,6 +336,10 @@ static inline void put_branch(u32 site, u32 to)
 }
 static void icache_inval(u32 addr, u32 size)
 {
+    if (EXT_HW) {
+        __asm__ volatile("svc 0x92\n    svc 0x94" : : : "r0", "r1", "r2", "r3", "r12", "memory");
+        return;
+    }
     register u32 r0 __asm__("r0") = addr;
     register u32 r1 __asm__("r1") = size;
     __asm__ volatile("svc 0x93" : "+r"(r0), "+r"(r1) : : "r2", "r3", "r12", "memory");
@@ -1289,6 +1340,76 @@ static void battle_check(void)
     }
     IN_BATTLE = on;
 }
+/* ---------------------------------------------------------------------
+ * Camera cuts in cutscenes.  The core blends the game camera between ticks
+ * unless an axis jumps more than 150, and fov_swap blends the fov unless it
+ * jumps more than 30 degrees, so a cut to a nearby shot drew one frame
+ * halfway between the two shots.  While a cutscene camera animation runs
+ * (CAMANIM_TICK), a tick whose camera move does not continue the previous
+ * tick's move (same rule as node_veto: |d| <= 3|p| plus a small start
+ * allowance, same direction) is a cut: no camera or fov blend this tick.
+ * Runs at phase 0, before the core's cam_swap.  Field cameras (no camera
+ * animation) are never touched.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext6.text" rodata=".ext6.rodata"
+typedef struct { u32 tick, cam; float d[6], fov, df; } CutRec;        /* 40 bytes */
+#define CUT ((volatile CutRec *)0x004F3FD8u)                          /* up to 0x4F4000 */
+__attribute__((noinline)) static void cam_cut(u32 t)
+{
+    u32 cam = (u32)GetGameCamera();
+    if (cam < 0x00100000u) return;
+    volatile CutRec *R = CUT;
+    volatile float *real = (volatile float *)(cam + 4);
+    float f = *(volatile float *)(cam + 0x28);
+    int cont = R->tick + 1 == t && R->cam == cam;
+    float d2 = 0.0f, p2 = 0.0f, dot = 0.0f, d[6];
+    for (int k = 0; k < 6; k++) {
+        d[k] = real[k] - S->camPrev[k];
+        float p = cont ? R->d[k] : 0.0f;
+        d2 += d[k] * d[k]; p2 += p * p; dot += d[k] * p;
+    }
+    float df = cont ? f - R->fov : 0.0f, pf = cont ? R->df : 0.0f;
+    R->tick = t; R->cam = cam; R->fov = f; R->df = df;
+    for (int k = 0; k < 6; k++) R->d[k] = d[k];
+    if (CAMANIM_TICK + 2 < t) return;                    /* no cutscene camera running */
+    int cut = d2 > 16.0f && !(dot > 0.0f && d2 <= 9.0f * p2 + 16.0f);   /* 4 units start allowance */
+    float adf = df < 0.0f ? -df : df, apf = pf < 0.0f ? -pf : pf;
+    if (adf > 1.0f && adf > 3.0f * apf + 1.0f) cut = 1;                  /* zoom jump */
+    if (!cut) return;
+    S->camValid = 0;                                     /* core: no blend this tick */
+    FOV->tick = 0;                                       /* fov_swap: no blend this tick */
+}
+#pragma clang section text=".ext.text" rodata=".ext.rodata"
+#ifdef CAMLOG
+/* ---------------------------------------------------------------------
+ * Camera log (diagnostic builds only, -DCAMLOG).  At phase 0 of every logic
+ * tick, before the core's cam_swap: the game camera's pos/target, the
+ * previous tick's values the core will blend from (S->camPrev), fov and
+ * whether fov_swap blended it.  Ring of CL_N records on the game heap,
+ * pointer at 0x4F3FCC (magic 'CLG1').  Read with tools/gdb/cam_dump.py.
+ * --------------------------------------------------------------------- */
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+#define CL_N 512
+typedef struct { u32 tick, counter, cam, flags, scene; float fov, real[6], prev[6]; } ClRec;   /* 72 bytes */
+typedef struct { u32 magic, n, pad[2]; ClRec r[CL_N]; } ClTab;
+#define CL_HEAP (*(volatile u32 *)0x004F3FCCu)
+__attribute__((noinline)) static void cam_log(u32 t)
+{
+    ClTab *L = (ClTab *)heap_tab(&CL_HEAP, 0x31474C43u, sizeof(ClTab));
+    if (!L) return;
+    u32 cam = (u32)GetGameCamera();
+    ClRec *r = &L->r[L->n++ & (CL_N - 1)];
+    r->tick = t; r->counter = S->counter; r->cam = cam;
+    r->flags = S->camValid | (S->camPtr == cam) << 1 | (FOV->sw & 1) << 2 | IN_BATTLE << 3;
+    r->scene = *(volatile u32 *)0x00464AF8u;
+    r->fov = cam >= 0x00100000u ? *(volatile float *)(cam + 0x28) : 0.0f;
+    for (int k = 0; k < 6; k++) {
+        r->real[k] = cam >= 0x00100000u ? *(volatile float *)(cam + 4 + k * 4) : 0.0f;
+        r->prev[k] = S->camPrev[k];
+    }
+}
+#pragma clang section text=".ext.text" rodata=".ext.rodata"
+#endif
 void ext_watch_swap(SprTab *T, u32 t, u32 phase)
 {
     if (phase == 0) {
@@ -1298,7 +1419,10 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
-        if (CAMPAGE == 1) { mc_alloc(); battle_check(); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); ci_install(); }
+        if (CAMPAGE == 1) { mc_alloc(); battle_check(); cam_cut(t); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); ci_install(); }
+#ifdef CAMLOG
+        if (CAMPAGE == 1) cam_log(t);
+#endif
     }
     for (int i = 0; i < NWATCH; i++) {
         const WatchDef *d = &WDEF[i];

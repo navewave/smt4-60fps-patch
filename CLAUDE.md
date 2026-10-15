@@ -5,7 +5,8 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 - Game logic stays at 30 Hz, so the original speed is kept. The patch renders 60 Hz and interpolates the in-between frames.
 - The patch is a binary IPS against the decompressed `.code`. Patch code is C plus ARM asm, compiled with clang/lld for ARMv6K + VFPv2 (hard float).
 - The owner tests every build in **Azahar** (Windows) and on a **New 3DS (Luma3DS)**.
-- Last stable: **build 7d** (tag `v7d-stable`). Release candidate: **build 8** (tag `v8-rc`): 7d + cell-call smoothing (7e) + nav-map flag (7f), for USA 1.0, USA 1.1, EUR, JPN, KOR, TWN (`releases/SMT4_60fps_8_*.zip`). Needs a smoke test per version and one Real_3DS test before it is marked stable.
+- Last stable: **build 7d** (tag `v7d-stable`). Build 8 = public v1.0 assets as first uploaded (Azahar full + core-only Real_3DS).
+- Current: **build 10** = 8 + the full extension on an actual 3DS (3GX plugin, `src/plugin_main.c`), frame-time logic gate (hardware), clean cutscene camera cuts. Tested: Azahar USA 1.0, New 3DS USA 1.0. Other versions build but are untested.
 - Versions: `tools/regions.py` (title IDs, files). Region game files live in `Other Regions Builds/` (private, gitignored).
 
 ## Directory map
@@ -13,9 +14,11 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 |---|---|
 | `patch/phase3b.S` | Core asm hooks: logic gate, task gate, dt scaling, frame begin, sprite animator wrappers. HW-safe. |
 | `patch/interp_arm.c`, `patch/interp_thumb.c`, `patch/interp.h` | Core C (camera/node/sprite interpolation). Lives in the 2.5 KB text cave and is nearly full (2516/2520 bytes). HW-safe. |
-| `patch/interp_ext.c` | **Extension, Azahar only.** Hooks installed at runtime, generic 2D quad smoothing, field tiles, rotation, scale, material-anim classification, battle detection, diorama cameras (dc_*), event portraits (pt_*). |
+| `patch/interp_ext.c` | **Extension** (Azahar: full code.ips; actual 3DS: written by the plugin). Hooks installed at runtime, generic 2D quad smoothing, field tiles, rotation, scale, material-anim classification, battle detection, diorama cameras (dc_*), event portraits (pt_*). |
 | `patch/history/` | Older snapshots of interp_ext.c: 5t, 6b, and rejected experiments (5w_af, 5x, 5s_rejected, 5z4). |
 | `src/cam_stick.c` | Right-stick camera mod; lives in the extra page at 0x4F1000. |
+| `src/plugin_main.c`, `src/plugin_gate.c` | Luma3DS 3GX plugin for an actual 3DS: writes (Azahar code.ips minus HW code.ips) at boot, sets S->emu + EXT_HW, installs the frame-time logic gate. |
+| `tools/build_plugin.py NAME` | Builds `out/NAME_plugin.3gx` and `out/NAME_exheader_hw.bin` (bss +0x5000) from `out/NAME_code.ips` / `_code_hw.ips`. |
 | `tools/build.py` | Build library: compile, link, emit IPS. `SMT4_VER=1.1` selects version 1.1. |
 | `tools/build_release.py NAME` | Builds `out/NAME_code.ips`, `NAME_exheader.bin`, `NAME_60fps_only.ips` and `NAME_code_hw.ips`. |
 | `tools/build_phase1.py` | Hook site table (SITES/BOOT). build_release execs its top part. |
@@ -33,11 +36,12 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 ## Build
 Requirements: Python 3, LLVM/clang with `clang`, `ld.lld`, `llvm-objcopy`, `llvm-objdump` and `llvm-nm` on PATH.
 ```
-python3 tools/build_release.py phase8                       # USA 1.0
-SMT4_REGION=us11 python3 tools/build_release.py phase8      # also eu, jp, kr, tw -> out/phase8_<region>_*
+python3 tools/build_release.py phase10                      # USA 1.0
+SMT4_REGION=us11 python3 tools/build_release.py phase10     # also eu, jp, kr, tw -> out/phase10_<region>_*
+python3 tools/build_plugin.py phase10                       # actual-3DS plugin + exheader (per region, after build_release)
 python3 tools/port.py <region>                              # regenerate ports/<region>.json after adding addresses
 python3 tools/verify_region.py                              # check runtime hook points in every version
-python3 tools/package.py 8 --release 1.0                    # releases/SMT4_60fps_v1.0_<VERSION>.zip: Azahar_full, Real_3DS, cheats, README (60fps_only no longer shipped)
+python3 tools/package.py 10 --release 1.0                   # releases/SMT4_60fps_v1.0_<VERSION>.zip: Azahar_full, Actual_3DS (luma/ SD layout), cheats, README
 # release zips are not committed: they are attached to GitHub Releases (notes: docs/RELEASE_NOTES_v1.0.md)
 ```
 - New game addresses in the sources must be USA 1.0 addresses; re-run `tools/port.py` for every region afterwards.
@@ -52,7 +56,7 @@ python3 tools/package.py 8 --release 1.0                    # releases/SMT4_60fp
 - **Azahar:** `Azahar/load/mods/00040000000E5C00/exheader.bin` + `.../exefs/code.ips`.
   - The full IPS **requires** the matching exheader; it raises bss by 0x3000 (since 7b; 6b used 0x2000).
   - Without it Azahar logs `Failed to load ROM (Error 12)`.
-- **Real 3DS:** `/luma/titles/00040000000E5C00/code.ips` (the `_code_hw.ips`), with Luma's "Enable game patching" on. The owner's console runs **1.0** code.
+- **Actual 3DS:** `/luma/titles/<tid>/code.ips` (`_code_hw.ips`) + `/luma/titles/<tid>/exheader.bin` (`_exheader_hw.bin`) + `/luma/plugins/<tid>/smt4_60fps.3gx` (one .3gx only). Luma "Enable game patching" on, Rosalina Plugin Loader on. The owner's console (New 3DS) runs **1.0** code. Crash dumps: `SD:/luma/dumps/arm11/*.dmp` (header 40 bytes, then regs r0-r15, cpsr, dfsr, ifsr, far, ...; process name at the end).
 
 ## Architecture in brief
 - **Logic gate:** frame parity is set at the top of the main loop (logic frames are even). Input, fades, clock and sound run only on logic frames. The task scheduler skips logic tasks (prio < 0x65, and 0x67) on in-between frames; draw tasks run every frame. AsdModelCalcProc and AsdMdlManCalcProc are whitelisted to run every frame.
@@ -66,7 +70,9 @@ python3 tools/package.py 8 --release 1.0                    # releases/SMT4_60fp
 - **IMPORTANT RULE:** `ext_watch_swap` (phase 0) runs **only on logic frames**, because the core `spr_swap` returns early otherwise. Ext features must record their "previous" value on the logic frame and blend between the last logic-frame value and the current one. Five past attempts failed because they recorded on in-between frames, which never run there. Hooks on draw/quad functions do run every frame.
 - **Core vs. extension:**
   - The core sits in the text cave and works on hardware.
-  - The extension uses memory beyond the original code buffer (0x4F0000+, the extra pages from the exheader) and runtime-patched branches (svc 0x93 icache flush). It works on Azahar only, because a real 3DS enforces execute-never.
+  - The extension uses memory beyond the original code buffer (0x4F0000+, the extra pages from the exheader) and runtime-patched branches (svc 0x93 icache flush).
+  - Azahar: the full code.ips writes it. Actual 3DS: Luma cannot IPS past the code image and enforces execute-never, so the 3GX plugin (Luma's loader maps it at 0x07000000 and sets the process RWX) writes the same bytes at boot. Plugin sets EXT_HW (STATE+0x1C4): the extension then uses svc 0x92 + 0x94 (whole-cache) when patching code. Never by-address cache svcs on hardware: Luma runs 0x91/0x93 on every core and faults in the kernel (crash in "qtm").
+  - Frame-time logic gate (plugin only): logic runs when two vblanks of real time have passed, so dropped frames do not slow the game; every-frame dt comes from STATE+0x1C0.
   - `S->emu` comes from svcGetSystemInfo(0x20000).
   - `CAMPAGE==1` means magic 'CCAM' was found at 0x4F1000, i.e. the exheader is present.
 
@@ -83,6 +89,11 @@ python3 tools/package.py 8 --release 1.0                    # releases/SMT4_60fp
 | 0x4F2E00 | scale records (SclRec[12]); SCL_ANY at 0x4F2FF0 |
 | 0x4F3000–0x4F3C00 | ext5 code (dc_swap, pt_swap) |
 | 0x4F3C00 | event portrait records (PtRec[12], 80 bytes each) |
+| 0x4EFFF8 | every-frame dt word for the frame-time gate (plugin; STATE+0x1C0) |
+| 0x4EFFFC | EXT_HW byte: extension running on hardware (plugin; STATE+0x1C4) |
+| 0x4F3FCC / 0x4F3FD0 | camera log / anim-name table heap pointers (CAMLOG builds only) |
+| 0x4F3FD4 | CAMANIM_TICK: last tick a cutscene CameraAnimation stepped |
+| 0x4F3FD8 | CutRec (cam_cut history, 40 bytes, up to 0x4F4000) |
 
 Ext data words:
 | Address | Use |
@@ -129,6 +140,7 @@ Ext data words:
   - material/visibility anims outside battle (keeps torches and fire billboards correct)
   - flipbook-like materials in battle
   - EPL particle positions
+- **Camera cuts (10):** cutscene cameras are NW4C CameraAnimation ("Ca"); at half frames the curve between two shots' keys was sampled. updf_class gives them whole frames; cam_cut vetoes camera/fov blends on discontinuous moves while one runs. Diagnostic: `SMT4_CFLAGS=-DCAMLOG` + `tools/gdb/cam_dump.py`.
 - **Fixed in 7a–7d** (see `docs/notes/SMT4_7d_review.md`): diorama backdrops (camera tween FUN_00341C74), event portraits (EVE_2dTex, EVE_BustupTex) incl. Burroughs, expression crossfades.
 - **Not fixable:** pre-rendered moflex videos (`Move` task).
 - **Open candidates** from the 7d review: battle background following the battle camera, player lights, 2D zooms / vertex-colour fades outside the sprite animators.
