@@ -23,7 +23,6 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 | `tools/build_release.py NAME` | Builds `out/NAME_code.ips`, `NAME_exheader.bin`, `NAME_60fps_only.ips` and `NAME_code_hw.ips`. |
 | `tools/build_phase1.py` | Hook site table (SITES/BOOT). build_release execs its top part. |
 | `tools/old/` | Historical phase builders and scan scripts (reference only). |
-| `v11/` | 1.0→1.1 address porting: `port.py`, `mapnew.py --write`, `addrmap.json`. |
 | `game/v10`, `game/v11` | The owner's own decompressed code.bin + exheader.bin. **Do not publish** (copyrighted game code). |
 | `re/` | Ghidra project, exported decompilation (`dump/decomp.c`, 24 MB), disassembly (`dump/text.asm`), Ghidra scripts. Not for publishing either. |
 | `releases/` | Release zips (local only, gitignored; published on GitHub Releases). |

@@ -53,6 +53,6 @@
 - Opens ir:rst through the game's own srv wrapper. The exheader adds ir:rst and +0x2000 bss.
 
 ## 1.1 port
-- v11/mapnew.py maps new constants: text by masked instruction windows, rodata/data by literal-pool votes.
+- (old v11/mapnew.py, removed; now tools/port.py for every version) mapped new constants: text by masked instruction windows, rodata/data by literal-pool votes.
 - Manual entries are in tools/build.py. Data/bss layout is unchanged in 1.1.
 - The 1.1 build was verified with matching hook words but has not been play-tested.
