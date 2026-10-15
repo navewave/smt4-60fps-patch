@@ -40,7 +40,6 @@ Azahar and an actual 3DS run the same patch with the same features.
 | Battle effects (heat haze, glows), model zoom | ✅ | ✅ |
 | Torches and flames | ✅ | ✅ |
 | Right-stick camera control (New 3DS / Circle Pad Pro) | ✅ | ✅ |
-| Full game speed when frames drop | — | ✅ |
 
 ## Actual 3DS setup
 
