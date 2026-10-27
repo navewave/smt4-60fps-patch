@@ -124,6 +124,9 @@ hk_task_gate:
         sub     r2, r2, #0x610          @ "AsdModelCalcProc"  (0x610)
         cmp     r2, #0
         cmpne   r2, #0x48               @ "AsdMdlManCalcProc" (0x658)
+#ifdef REGION_APOC
+        cmnne   r2, #0x19               @ "h3dModelCalcProc"  (0x5F7): Apocalypse's model system (hk_h3d_model)
+#endif
         bne     .Lgated
 .Levery:                                @ runs every frame, dt = 0.5
         ldr     r1, =STATE
@@ -216,6 +219,34 @@ hk_blend:
         pop     {r12}
         bx      lr
 #ifdef REGION_APOC
+@ ---------------------------------------------------------------------
+@ Apocalypse h3d models (characters): "h3dModelCalcProc" (0x145F94) loops
+@ over its models and calls the per-model update 0x156994(model, r1, step s0),
+@ which builds the root matrix from the model's position (+0x1B4), steps
+@ its animations by s0 and updates the skeleton.  The task gate now runs
+@ it every frame, so the step is scaled by g_dt, and h3d_pre/h3d_post draw
+@ the model at the midpoint of the last two ticks on logic frames.
+@ bl from 0x146020 (the loop's call).
+@ ---------------------------------------------------------------------
+        .global hk_h3d_model
+hk_h3d_model:
+        push    {r4-r8, lr}
+        vpush   {d8}
+        mov     r4, r0
+        mov     r5, r1
+        ldr     r12, =STATE
+        vldr    s16, [r12, #8]
+        vmul.f32 s16, s16, s0           @ anim step * g_dt
+        bl      h3d_pre                 @ r0 = model
+        mov     r0, r4
+        mov     r1, r5
+        vmov.f32 s0, s16
+        bl      H3dModelUpdate          @ 0x156994
+        mov     r0, r4
+        bl      h3d_post
+        vpop    {d8}
+        pop     {r4-r8, pc}
+
 @ SMT IV: Apocalypse adds a variable step ("vadd s0, s0, s2"): scale s2 instead of s19.
         .global hk_blend_s2
 hk_blend_s2:

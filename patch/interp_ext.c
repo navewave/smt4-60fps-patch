@@ -238,11 +238,15 @@ static inline float f_of(u32 b) { union { u32 u; float f; } x; x.u = b; return x
 static inline u32 b_of(float f) { union { u32 u; float f; } x; x.f = f; return x.u; }
 
 static const WatchDef WDEF[NWATCH] = {
+#ifndef REGION_APOC   /* Apocalypse: navi map differs, InfoWin pointer ambiguous; these write through the pointer */
     { 0x00447E88, 0x1C,  3, 0 },  /* player position (navi map tiles are offset by it)            */
     { 0x0044CDF0, 0x38,  2, 0 },  /* navi map scroll centre: FUN_00231F58 -> *(0x44CDF0)+0x38    */
+#endif
     { 0x0043E278, 0x28,  2, 1 },  /* camp menu ramps (tile scale/offset), stepped inside CAMPDL  */
+#ifndef REGION_APOC
     { 0x0044CDF0, 0x1A4, 2, 0 },  /* navi map slide offset (menu open/close)                     */
     { 0x0043E128, 0x18,  2, 2 },  /* InfoWin text x offsets (int px), copied from its slide sprite +0xD0 */
+#endif
     /* the navi draw is excluded from the generic quad interpolation (NOGEN) */
 };
 
@@ -1499,8 +1503,11 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         spr_bigmove_fix(T, t);
         if (!CAMPAGE) CAMPAGE = *(volatile u32 *)0x004F1000u == 0x4D414343u ? 1 : 2;
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
+#ifndef REGION_APOC   /* Apocalypse has neither SMT IV's 0x194-byte field tiles nor its COMBG layout:
+                         both write through their pointers (mif_swap wrote over battle objects) */
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
+#endif
         if (CAMPAGE == 1) { mc_alloc(); battle_check(); cam_cut(t); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); ci_install(); }
 #ifdef CAMLOG
         if (CAMPAGE == 1) cam_log(t);

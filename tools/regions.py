@@ -23,7 +23,10 @@ REGIONS = {
     'jp':   dict(name='JPN',     dir=f'{_REG}/SMTIV-J-ver1_extracted', code='code.bin'),
     'kr':   dict(name='KOR',     dir=f'{_REG}/SMTIV-K-ver1_extracted', code='code.bin'),
     'tw':   dict(name='TWN',     dir=f'{_REG}/SMTIV-T-ver1_extracted', code='code.bin'),
-    'apoc': dict(name='SMT IV: Apocalypse USA', dir='Shin Megami Tensei IV - Apocalypse', code='code.bin', glob=True),
+    'apoc': dict(name='SMT IV: Apocalypse USA', dir='Shin Megami Tensei IV - Apocalypse', code='code.bin', glob=True,
+                 # Apocalypse-only code, used as is (not ported): h3d model system ("h3dModelCalcProc" 0x145F94)
+                 native_syms={'H3dModelUpdate': 0x156994},     # per-model update (model r0, r1, anim step s0)
+                 native_sites=[dict(addr=0x146020, kind='bl', to='hk_h3d_model', expect=0xEB00425B)]),
 }
 PAGE = 0x1000
 up = lambda a, n=PAGE: (a + n - 1) // n * n

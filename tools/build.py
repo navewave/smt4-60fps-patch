@@ -106,6 +106,8 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     ld = [ LLD, '-o', elf, '-T', lds, '-e', '0', '--no-rosegment', '-N' ] + objs
     for k, v in GAME_SYMS.items():
         ld += ['--defsym', f'{k}=0x{P(v):X}']
+    for k, v in R.get('native_syms', {}).items():          # this version's own addresses (regions.py)
+        ld += ['--defsym', f'{k}=0x{v:X}']
     subprocess.check_call(ld)
     syms = {}
     for line in subprocess.check_output(['llvm-nm', elf]).decode().split('\n'):
@@ -156,8 +158,8 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     if ext4: patches.append((EXT4, ext4)); emu_addrs.add(EXT4)
     if ext5: patches.append((EXT5, ext5)); emu_addrs.add(EXT5)
     if ext6: patches.append((EXT6, ext6)); emu_addrs.add(EXT6)
-    for s in sites:
-        addr, kind = P(s['addr']), s['kind']
+    for s in list(sites) + R.get('native_sites', []):
+        addr, kind = (s['addr'] if s in R.get('native_sites', []) else P(s['addr'])), s['kind']
         if addr == BASE:                                   # site marked absent for this version (tools/port.py MANUAL)
             print(f"  site {s['addr']:#x} absent in {REGION}: not patched"); continue
         orig = struct.unpack_from('<I', data, addr - BASE)[0]

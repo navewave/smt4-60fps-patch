@@ -28,14 +28,29 @@ MANUAL = {
         0x10AED8: 0x1400FC,   # AsdModelCalcProc "bl ModelCalc" (function at 0x1400F8)
         0x28C8AC: 0x32C5C8,   # SetPosA (entry 0x32C5C4, identical body)
         0x29A2B4: 0x36BB00,   # SetPosB (entry 0x36BAFC, identical body)
+        0x28C8A8: 0x32C5C4, 0x29A2B0: 0x36BAFC,   # their entries (named in comments only)
         0x2BF9F0: 0x163AA4,   # sprite animator entry (now takes a float in s0; wrappers keep d0-d7)
         0x2B9220: 0x167458, 0x29538C: 0x316580, 0x296528: 0x340A94,   # animator variants (identical entries)
         0x12477C: 0x162ABC,   # model crossfade: "vadd s0,s0,s2" (step in s2, not s19): hk_blend_s2 (REGION_APOC)
         0x2BF460: 0x1835B4,   # CellPut (exact entry match; window search had picked a neighbour)
         0x25C0F0: 0x100000,   # SetScale: folded into the engine's node helpers (0x44Bxxx): scale smoothing off
         0x1FC4AC: 0x100000,   # nav map draw call: Apocalypse has no NAVI task in that form: marker refresh off
-        # right-stick camera: yaw hook context differs: left out for now
-        0x2645CC: 0x100000, 0x266284: 0x100000, 0x2D22FC: 0x100000, 0x25C484: 0x100000,
+        0x39F238: 0x100000,   # its call target (only reached through 0x1FC4AC)
+        0x2A8D68: 0x100000,   # layout pane renderer: named in a comment only
+        # called game functions: the window search had landed mid-function (boot crash in frame_c)
+        0x2C4B84: 0x163060,   # GameAlloc (inlined mutex release; main-loop caller 0x137380 = USA 0x1029CC)
+        0x2BCBB0: 0x1524CC,   # CamUpdateStereo (same prologue; stereo struct fields +4)
+        0x2C20A8: 0x14F0DC,   # CamSetLookAt (reordered; pos +4, target +0x10, up +0x1C, dirty +1)
+        0x2C5218: 0x152F54,   # GetGameCamera *(*(0x59DBC0+4)+0x80) (had mapped into another function: no camera smoothing)
+        0x1A310C: 0, 0x1A6B1C: 0,   # Status DrawUp owner range: start mapped into data: dropped
+        0x464B10: 0x5B3C14,   # scene cameras = scene manager 0x5B3BF4 + 0x20 (USA 0x464AF0 + 0x20; store at
+                              # 0x143480 = USA 0x1079D8). Had mapped to 0x63FFD0: dc_swap wrote/called through
+                              # an unrelated object in battle (crash)
+        # right-stick camera (cam_stick.c, REGION_APOC: snap +0xB4, cool-down +0xB6, &cam in r10)
+        0x2645CC: 0x33FDE4,   # field yaw controller "cmp r5,#0" before the L/R step (function 0x33F9F4)
+        0x266284: 0x36A548,   # camera placement "vstr s0,[r4,#100]" (window search was one word late)
+        0x2D22FC: 0x339D8C,   # mode-0 camera "ldr r0,[r9,#4]" after the yaw update (r9 = 0x5806A0)
+        0x25C484: 0x324B7C,   # free-roam hand-off "vstmia r1,{s0-s2}" (function 0x324B68)
     },
 }
 PATCH_LO = 0x4EFE38                                                 # patch STATE and pages: shifted by build.py
@@ -257,6 +272,17 @@ class Port:
                 notes.append(f'owner range {lo:#x}-{hi:#x} dropped (UI code differs in this version)')
                 mp[lo] = mp[hi] = 0
                 bad[:] = [(v, h) for v, h in bad if v not in (lo, hi)]
+        # a function entry (push, or any bl target) must map to a matching entry, or calls into it misbehave
+        wd = lambda w, a: int(w[(a - B) // 4]) if B <= a < B + 4 * len(w) else 0
+        ta = self.wa[:self.na].astype(np.int64)
+        bl = (ta & 0x0F000000) == 0x0B000000
+        off = (ta & 0xFFFFFF) - ((ta & 0x800000) << 1)
+        bl_tgt = set((B + 4 * np.nonzero(bl)[0] + 8 + 4 * off[bl]).tolist())
+        for v, t in sorted(mp.items()):
+            wu, wn = wd(self.wa, v), wd(self.wn, t)
+            push = wu >> 16 == 0xE92D
+            if t > B and (push or v in bl_tgt) and not (push and wn >> 16 == 0xE92D) and self.mask(np.array([wu], '<u4'))[0] != self.mask(np.array([wn], '<u4'))[0]:
+                notes.append(f'{v:#x} -> {t:#x}: function entry maps to a non-entry: check it')
         return mp, bad, notes
 
 if __name__ == '__main__':

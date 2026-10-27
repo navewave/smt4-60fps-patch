@@ -70,6 +70,17 @@ extern int  ShmBlockMap(volatile u32 *blk, u32 size, u32 readonly);             
 
 #define CAM_PTR    0x004474F4u     /* field camera controller object */
 #define MAPFLAGS   0x0049F91Cu     /* +0x18 u8, +0x1C u32: camera input locked (events, menus) */
+#ifdef REGION_APOC                 /* Apocalypse: snap fields moved by 4, one more lock byte (+0x21) */
+#define CAM_SNAP   0xB4
+#define CAM_COOL   0xB6
+#define LOCKED()   (*(volatile u8 *)(MAPFLAGS + 0x21) || *(volatile u8 *)(MAPFLAGS + 0x18) || *(volatile u32 *)(MAPFLAGS + 0x1C))
+#define CAMPTR_REG "r10"           /* register holding &camera pointer at the yaw hook */
+#else
+#define CAM_SNAP   0xB0            /* u8: L+R snap in progress */
+#define CAM_COOL   0xB2            /* s16: snap cool-down */
+#define LOCKED()   (*(volatile u8 *)(MAPFLAGS + 0x18) || *(volatile u32 *)(MAPFLAGS + 0x1C))
+#define CAMPTR_REG "r8"
+#endif
 
 static inline volatile u32 *cmdbuf(void)
 {
@@ -123,9 +134,9 @@ static float axis(int v)
  * the game's own L/R check: input not locked, no snap cool-down. */
 void cam_stick_yaw(u32 cam)
 {
-    if (*(volatile u8 *)(MAPFLAGS + 0x18) || *(volatile u32 *)(MAPFLAGS + 0x1C)) return;
-    if (*(volatile u8 *)(cam + 0xB0)) return;            /* L+R snap in progress */
-    if (*(volatile s16 *)(cam + 0xB2) > 6) return;
+    if (LOCKED()) return;
+    if (*(volatile u8 *)(cam + CAM_SNAP)) return;        /* L+R snap in progress */
+    if (*(volatile s16 *)(cam + CAM_COOL) > 6) return;
     if (C->state == 0) {
         stick_init();
         /* debug: one visible 45 degree jump = hook reached and ir:rst opened */
@@ -154,7 +165,7 @@ static float cur_pitch(void)
 {
     float p = C->pitch;
     u32 cam = *(volatile u32 *)CAM_PTR;
-    if ((cam_cfg.flags & 4) && cam >= 0x00100000u && *(volatile u8 *)(cam + 0xB0)) {
+    if ((cam_cfg.flags & 4) && cam >= 0x00100000u && *(volatile u8 *)(cam + CAM_SNAP)) {
         p *= 0.7f;
         if (p < 0.002f && p > -0.002f) p = 0.0f;
         C->pitch = p;
@@ -229,11 +240,11 @@ __asm__(
 "    pop   {r0, r1, r2, r3, r12, lr}\n"
 "    ldr   r0, [r9, #4]\n"
 "    bx    lr\n"
-/* bl from 0x2645CC, replaces "cmp r5, #0" (r8 = &camera pointer) */
+/* bl from 0x2645CC, replaces "cmp r5, #0" (r8 = &camera pointer; r10 in Apocalypse) */
 "cam_yaw_hook:\n"
 "    push  {r0, r1, r2, r3, r12, lr}\n"
 "    vpush {d0, d1, d2, d3, d4, d5, d6, d7}\n"
-"    ldr   r0, [r8]\n"
+"    ldr   r0, [" CAMPTR_REG "]\n"
 "    bl    cam_stick_yaw\n"
 "    vpop  {d0, d1, d2, d3, d4, d5, d6, d7}\n"
 "    pop   {r0, r1, r2, r3, r12, lr}\n"

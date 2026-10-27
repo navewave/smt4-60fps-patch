@@ -66,6 +66,51 @@ void hk_modelcalc(void)
     }
 }
 
+#ifdef REGION_APOC
+/* Apocalypse h3d models (see hk_h3d_model): position at model+0x1B4.  On a
+ * logic frame the update sees the midpoint of the last two ticks; h3d_post
+ * puts the true position back.  Records live after the State block (the
+ * Apocalypse .bss tail has 0xEE0 bytes before the patch pages). */
+typedef struct { u32 m, tick, sw; float p[3]; } HRec;    /* 24 bytes */
+#define H3D_N 32
+#define H3D   ((HRec *)((u32)S + 0x200))                 /* up to S + 0x500 */
+#define H3D_POS(m) ((float *)((m) + 0x1B4))
+
+void h3d_pre(u32 m)
+{
+    if (!S->logic || m < 0x08000000u) return;
+    u32 t = tick_now();
+    HRec *r = 0, *fr = 0;
+    for (int i = 0; i < H3D_N; i++) {
+        HRec *q = &H3D[i];
+        if (q->m == m) { r = q; break; }
+        if (!fr && (q->m == 0 || q->tick + 1 < t)) fr = q;
+    }
+    if (!r) { if (!fr) return; r = fr; r->m = m; r->tick = 0; }
+    r->sw = 0;
+    if (r->tick == t) return;                           /* second update in this tick */
+    float *P = H3D_POS(m);
+    int ok = r->tick == t - 1 && near3(P, 1, r->p, 1);
+    for (int k = 0; k < 3; k++) {
+        float c = P[k];
+        if (ok) P[k] = (c + r->p[k]) * 0.5f;
+        r->p[k] = c;                                    /* true value */
+    }
+    r->sw = ok; r->tick = t;
+}
+
+void h3d_post(u32 m)
+{
+    if (!S->logic) return;
+    for (int i = 0; i < H3D_N; i++) {
+        HRec *r = &H3D[i];
+        if (r->m != m) continue;
+        if (r->sw) { float *P = H3D_POS(m); for (int k = 0; k < 3; k++) P[k] = r->p[k]; r->sw = 0; }
+        return;
+    }
+}
+#endif
+
 static inline float f_of(u32 b) { union { u32 u; float f; } x; x.u = b; return x.f; }
 static inline u32 b_of(float f) { union { u32 u; float f; } x; x.f = f; return x.u; }
 

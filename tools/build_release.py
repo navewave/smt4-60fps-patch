@@ -55,7 +55,7 @@ sh = lambda *a: subprocess.check_call(list(a))
 sh('clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', '-Oz', '-ffreestanding',
    '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
    '-ffunction-sections', '-fdata-sections', '-Wall', '-c', B.subst_source(f'{ROOT}/src/cam_stick.c'),
-   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4')
+   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4', f'-DREGION_{B.REGION.upper()}')
 open(f'{bd}/cam.ld', 'w').write('SECTIONS {\n'
     f'  . = 0x{PAGE:X}; .cammagic : {{ *(.cam.magic) }}\n'
     f'  . = 0x{PAGE+4:X}; .camcfg : {{ *(.cam.cfg) }}\n'
@@ -85,7 +85,13 @@ B.write_ips(patches + cam, f'{ROOT}/out/{NAME}{SFX}_code.ips')
 
 exh = bytearray(open(B.EXH, 'rb').read())
 bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == B.R['bss'], hex(bss)
-struct.pack_into('<I', exh, 0x3C, bss + 0x4000)   # pages 0x4F1000 .. 0x4F4000
+# Azahar patches a buffer of code.bin + bss rounded up to a page, and fails (Error 12) on any
+# IPS write past its end: raise bss by 0x4000 (pages 0x4F1000 .. 0x4F4000), more if the last
+# page needs it (Apocalypse: the ext6 page lies past the rounding slack that USA happens to have)
+ips_end = max(a + len(r) for a, r in patches + cam)
+add = 0x4000
+while B.BASE + len(orig) + ((bss + add + 0xFFF) & ~0xFFF) < ips_end: add += 0x1000
+struct.pack_into('<I', exh, 0x3C, bss + add)
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'
