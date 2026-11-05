@@ -1,0 +1,5 @@
+reports: 3 sites, 620 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+  588  002ba754                       bottom pos                307,  -208  00164158 ?
+   30  002e7a8c                       bottom pos/size             6,     1  0016769c ?
+    2  002e169c                       bottom pos/size             0,   220  0016769c ?

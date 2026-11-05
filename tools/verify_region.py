@@ -4,7 +4,7 @@ feature silently stays off.   python tools/verify_region.py [region ...]"""
 import os, sys, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault('SMT4_REGION', 'us10')
-from regions import region, REGIONS
+from regions import region, REGIONS, available
 import importlib
 
 WORDS = [  # (USA 1.0 address, expected word, what)
@@ -41,5 +41,5 @@ def check(key):
     print(f'{key}: {"OK" if ok else "PROBLEMS"}')
     return ok
 if __name__ == '__main__':
-    keys = sys.argv[1:] or list(REGIONS)
+    keys = sys.argv[1:] or [k for k in REGIONS if available(k)]
     sys.exit(0 if all([check(k) for k in keys]) else 1)

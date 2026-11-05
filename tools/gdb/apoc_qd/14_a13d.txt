@@ -1,0 +1,5 @@
+cannot read memory: is the GDB stub on and the game running?
+The target architecture is set to "armv6k".
+C:/Users/Nave/AppData/Local/Temp/tmpsj1fle6s/c.gdb:4: Error in sourced command file:
+could not connect (error 138): The system tried to join a drive to a directory on a joined drive.
+

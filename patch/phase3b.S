@@ -60,6 +60,9 @@ hk_frame_begin:
 @ top/bottom screen fades.  Logic frames only.
 @ ---------------------------------------------------------------------
 hk_fade:
+#ifdef REGION_APOC
+        b       fade_step               @ every frame: midpoint on logic frames
+#endif
         ldr     r0, =STATE
         ldrb    r0, [r0, #4]
         cmp     r0, #0
@@ -246,6 +249,31 @@ hk_h3d_model:
         bl      h3d_post
         vpop    {d8}
         pop     {r4-r8, pc}
+
+@ Relic scan tiles: relic_begin at the counter read, then the two int-to-float
+@ conversions of the counter take relic_begin's fraction.
+        .global hk_relic_begin, hk_relic_fade, hk_relic_rise
+hk_relic_begin:                         @ replaces ldr r6, [r4, #0x78]
+        push    {r0-r3, r12, lr}
+        mov     r0, r4
+        vmov.f32 s0, s16
+        bl      relic_begin
+        vmov.f32 s16, s0
+        pop     {r0-r3, r12, lr}
+        ldr     r6, [r4, #0x78]
+        bx      lr
+hk_relic_fade:                          @ replaces vcvt.f32.s32 s2, s2 (counter - 15)
+        vcvt.f32.s32 s2, s2
+        ldr     r0, =STATE + 0x690
+        vldr    s3, [r0]
+        vsub.f32 s2, s2, s3
+        bx      lr
+hk_relic_rise:                          @ replaces vcvt.f32.s32 s0, s0 (counter * layer)
+        vcvt.f32.s32 s0, s0
+        ldr     r12, =STATE + 0x690
+        vldr    s1, [r12, #4]
+        vmul.f32 s0, s0, s1
+        bx      lr
 
 @ SMT IV: Apocalypse adds a variable step ("vadd s0, s0, s2"): scale s2 instead of s19.
         .global hk_blend_s2

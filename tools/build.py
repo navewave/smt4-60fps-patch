@@ -20,6 +20,8 @@ EXT5_END = 0x4F3C00    # 0x4F3C00-0x4F4000: ext5 data (portrait records 0x4F3C00
 EXT6 = 0x4F4000       # sixth region: fourth extra page (exheader bss +0x4000)
 EXT6_END = 0x4F5000
 MEM_END = 0x4F5000    # Azahar resizes code.bin to cover the bss pages before applying the IPS
+CORE_PAGE = 0x4F5000  # versions whose text cave is too small (regions.py core_page): the core gets its own
+                      # page after ext6, written by the full code.ips (Azahar) or the 3GX plugin (hardware)
 LLD = 'ld.lld.exe' if os.name == 'nt' else 'ld.lld'   # Windows does not add .exe to a name that has a dot
 
 # ---- game version -------------------------------------------------------
@@ -34,11 +36,20 @@ from regions import region
 REGION = os.environ.get('SMT4_REGION') or ('us11' if os.environ.get('SMT4_VER') == '1.1' else 'us10')
 R = region(REGION)
 VER = REGION
+FAMILY = R['family']                 # 'apoc' for every Apocalypse version
+if FAMILY != REGION and not R['native_ported']:
+    raise SystemExit(f'no Apocalypse USA -> {REGION} map yet: run python tools/port.py {REGION}')
+# preprocessor switches: REGION_<KEY>, plus REGION_<FAMILY> for versions of the same game
+DEFS = [f'-DREGION_{REGION.upper()}'] + ([f'-DREGION_{FAMILY.upper()}'] if FAMILY != REGION else [])
 ORIG, EXH, SUFFIX = R['code'], R['exh'], R['suffix']
 CAVE, CAVE_END, EXT2, EXT2_END = R['cave'], R['cave_end'], R['ext2'], R['ext2_end']
 SD, PD = R['state_delta'], R['page_delta']
 EXT, EXT_END, EXT3, EXT3_END, EXT4, EXT4_END = (a + PD for a in (EXT, EXT_END, EXT3, EXT3_END, EXT4, EXT4_END))
 EXT5, EXT5_END, EXT6, EXT6_END, MEM_END = (a + PD for a in (EXT5, EXT5_END, EXT6, EXT6_END, MEM_END))
+if FAMILY == 'apoc': EXT5_END = 0x4F3FC0 + PD   # portrait records live in the State tail here
+CORE_IN_PAGE = bool(R.get('core_page'))
+CORE, CORE_END = (CORE_PAGE + PD, CORE_PAGE + 0x1000 + PD) if CORE_IN_PAGE else (CAVE, CAVE_END)
+if CORE_IN_PAGE: MEM_END = CORE_END
 ADDRMAP = {}
 if REGION != 'us10':
     ADDRMAP = {int(k, 16): int(v, 16) for k, v in json.load(open(f'{ROOT}/ports/{REGION}.json')).items()}
@@ -47,7 +58,7 @@ def P(a):
     """USA 1.0 address -> address in the selected version"""
     if REGION == 'us10': return a
     if 0x4EFE38 <= a < 0x4F0000: return a + SD           # patch STATE block
-    if 0x4F0000 <= a < 0x4F5000: return a + PD           # patch pages
+    if 0x4F0000 <= a < 0x4F6000: return a + PD           # patch pages (0x4F5000: core page)
     if not (0x100000 <= a < 0x4EFE38): return a
     if a in ADDRMAP: return ADDRMAP[a]
     raise SystemExit(f'no {REGION} mapping for {a:#x} (run tools/port.py {REGION})')
@@ -57,8 +68,12 @@ def subst_source(path):
     if REGION == 'us10': return path
     import re
     txt = open(path, encoding='utf-8').read()
+    nat = {a: R['native_xlat'][a] for a in R.get('native_consts', [])} if FAMILY != REGION else {}
     def rep(m):
         v = int(m.group(2), 16)
+        if v in nat:                                     # Apocalypse USA constant (REGION_APOC block)
+            if nat[v] != v: return m.group(1) + ('%0*X' % (len(m.group(2)), nat[v]))
+            return m.group(0)
         if v in ADDRMAP or 0x4EFE38 <= v < 0x4F5000:
             n = P(v)
             if n != v: return m.group(1) + ('%0*X' % (len(m.group(2)), n))
@@ -94,15 +109,21 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     for i, src in enumerate(srcs):
         obj = f'{ROOT}/build/{out_prefix}.{i}.o'
         src = subst_source(src)
-        cmd = ['clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', f'-DREGION_{REGION.upper()}', '-c', src, '-o', obj]
+        cmd = ['clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', *DEFS, '-c', src, '-o', obj]
         if src.endswith('.c'):
             if src.endswith('_thumb.c'): cmd[cmd.index('-marm')] = '-mthumb'
+            if R.get('native_own'):
+                cmd[1:1] = ['-DCI_OWN_NATIVE=' + ','.join('{0x%Xu,0x%Xu}' % o for o in R['native_own'])]
             cmd[1:1] = os.environ.get('SMT4_CFLAGS', '').split() + ['-Oz', '-ffreestanding', '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables',
                         '-fno-asynchronous-unwind-tables', '-ffunction-sections', '-Wall']
         subprocess.check_call(cmd)
         objs.append(obj)
     lds = f'{ROOT}/build/cave.ld'
-    open(lds, 'w').write('SECTIONS { . = 0x%X; .text : { *(.text.cave) *(.text*) *(.rodata*) } . = 0x%X; .ext2 : { *(.ext2.text*) *(.ext2.rodata*) } . = 0x%X; .ext : { *(.ext.text*) *(.ext.rodata*) } . = 0x%X; .ext3 : { *(.ext3.text*) *(.ext3.rodata*) } . = 0x%X; .ext4 : { *(.ext4.text*) *(.ext4.rodata*) } . = 0x%X; .ext5 : { *(.ext5.text*) *(.ext5.rodata*) } . = 0x%X; .ext6 : { *(.ext6.text*) *(.ext6.rodata*) } /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }\n' % (CAVE, EXT2, EXT, EXT3, EXT4, EXT5, EXT6))
+    outs = [(CORE, '.text : { *(.text.cave) *(.text*) *(.rodata*) }')] + [   # in address order (core page: last)
+            (a, f'.{n} : {{ *(.{n}.text*) *(.{n}.rodata*) }}') for a, n in
+            ((EXT2, 'ext2'), (EXT, 'ext'), (EXT3, 'ext3'), (EXT4, 'ext4'), (EXT5, 'ext5'), (EXT6, 'ext6'))]
+    open(lds, 'w').write('SECTIONS { ' + ' '.join('. = 0x%X; %s' % o for o in sorted(outs)) +
+                         ' /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }\n')
     ld = [ LLD, '-o', elf, '-T', lds, '-e', '0', '--no-rosegment', '-N' ] + objs
     for k, v in GAME_SYMS.items():
         ld += ['--defsym', f'{k}=0x{P(v):X}']
@@ -122,7 +143,7 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
             if len(parts) > 2 and parts[1].startswith(bad) and int(parts[2], 16) != 0:
                 raise SystemExit(f'cave build emitted {parts[1]} section')
     cave = open(f'{ROOT}/build/{out_prefix}.cave.bin', 'rb').read()
-    assert CAVE + len(cave) <= CAVE_END, 'cave overflow (%d bytes over)' % (CAVE + len(cave) - CAVE_END)
+    assert CORE + len(cave) <= CORE_END, 'cave overflow (%d bytes over)' % (CORE + len(cave) - CORE_END)
     subprocess.check_call(['llvm-objcopy', '-O', 'binary', '--only-section=.ext', elf, f'{ROOT}/build/{out_prefix}.ext.bin'])
     ext = open(f'{ROOT}/build/{out_prefix}.ext.bin', 'rb').read()
     assert EXT + len(ext) <= EXT_END, 'ext overflow (%d bytes over)' % (EXT + len(ext) - EXT_END)
@@ -144,14 +165,14 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
     data = bytearray(open(ORIG, 'rb').read())
     orig_len = len(data)
     data += bytes(MEM_END - BASE - len(data))      # bss pages as Azahar's loader sees them
-    assert data[CAVE - BASE: CAVE - BASE + len(cave)] == bytes(len(cave)), 'cave not empty'
+    assert data[CORE - BASE: CORE - BASE + len(cave)] == bytes(len(cave)), 'cave not empty'
     assert data[EXT - BASE: EXT - BASE + len(ext)] == bytes(len(ext)), 'ext area not empty'
     assert data[EXT2 - BASE: EXT2 - BASE + len(ext2)] == bytes(len(ext2)), 'ext2 area not empty'
-    print(f'core {len(cave)}/{CAVE_END-CAVE} bytes, ext {len(ext)}/{EXT_END-EXT} bytes, ext2 {len(ext2)}/{EXT2_END-EXT2} bytes, ext3 {len(ext3)}/{EXT3_END-EXT3}, ext4 {len(ext4)}/{EXT4_END-EXT4}, ext5 {len(ext5)}/{EXT5_END-EXT5}, ext6 {len(ext6)}/{EXT6_END-EXT6} bytes')
+    print(f'core {len(cave)}/{CORE_END-CORE} bytes{" (own page " + hex(CORE) + ")" if CORE_IN_PAGE else ""}, ext {len(ext)}/{EXT_END-EXT} bytes, ext2 {len(ext2)}/{EXT2_END-EXT2} bytes, ext3 {len(ext3)}/{EXT3_END-EXT3}, ext4 {len(ext4)}/{EXT4_END-EXT4}, ext5 {len(ext5)}/{EXT5_END-EXT5}, ext6 {len(ext6)}/{EXT6_END-EXT6} bytes')
 
     patches = []  # (addr, bytes)
-    patches.append((CAVE, cave))
-    emu_addrs = set()
+    patches.append((CORE, cave))
+    emu_addrs = {CORE} if CORE_IN_PAGE else set()        # core page: the plugin writes it on hardware
     if ext: patches.append((EXT, ext)); emu_addrs.add(EXT)
     if ext2: patches.append((EXT2, ext2)); emu_addrs.add(EXT2)
     if ext3: patches.append((EXT3, ext3)); emu_addrs.add(EXT3)

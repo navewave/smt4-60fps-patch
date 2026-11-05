@@ -34,19 +34,20 @@ SITES = ns['SITES'] + [
   dict(addr=0x108A64, kind='bl', to='hk_campdraw',   expect=0xE3A00001),
   dict(addr=0x1031F4, kind='bl', to='hk_runend',     expect=0xE59D0000),
 ]
-# per-version hook variants: {region: {USA site: (hook, expected original word)}}
+# per-game hook variants: {family: {USA site: (hook, expected original word)}}
 SITE_VARIANT = {'apoc': {0x12477C: ('hk_blend_s2', 0xEE300A01)}}
 for st in SITES:
-    v = SITE_VARIANT.get(B.REGION, {}).get(st['addr'])
+    v = SITE_VARIANT.get(B.FAMILY, {}).get(st['addr'])
     if v: st['to'], st['expect'] = v
 patches, syms, cave = B.build([f'{B.ROOT}/patch/phase3b.S', f'{B.ROOT}/patch/interp_arm.c',
                                f'{B.ROOT}/patch/interp_thumb.c', f'{B.ROOT}/patch/interp_ext.c'],
                               SITES + ns['BOOT'], NAME)
 ROOT = B.ROOT
-B.write_ips([p for p in patches if p[0] < B.P(0x4F1000)], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
+if not B.CORE_IN_PAGE:                                # needs the core in the text cave (no exheader)
+    B.write_ips([p for p in patches if p[0] < B.P(0x4F1000)], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
 hw = B.hw_patches(patches)
 B.write_ips(hw, f'{ROOT}/out/{NAME}{SFX}_code_hw.ips')
-print('hw patches', len(hw), 'of', len(patches))
+print('hw patches', len(hw), 'of', len(patches), '(core in its own page: needs the plugin on hardware)' if B.CORE_IN_PAGE else '')
 
 # ---- right-stick camera at page 0x4F1000 ----
 PAGE, CODE_AT, STATE_AT = B.P(0x4F1000), B.P(0x4F1020), B.P(0x4F1F00)
@@ -55,7 +56,7 @@ sh = lambda *a: subprocess.check_call(list(a))
 sh('clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', '-Oz', '-ffreestanding',
    '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
    '-ffunction-sections', '-fdata-sections', '-Wall', '-c', B.subst_source(f'{ROOT}/src/cam_stick.c'),
-   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4', f'-DREGION_{B.REGION.upper()}')
+   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4', *B.DEFS)
 open(f'{bd}/cam.ld', 'w').write('SECTIONS {\n'
     f'  . = 0x{PAGE:X}; .cammagic : {{ *(.cam.magic) }}\n'
     f'  . = 0x{PAGE+4:X}; .camcfg : {{ *(.cam.cfg) }}\n'

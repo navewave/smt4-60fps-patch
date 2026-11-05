@@ -1,0 +1,7 @@
+reports: 5 sites, 199 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+  190  002ba754                       bottom pos                203,  -169  00164158 ?
+    5  0013d0f0                       top    pos                333,     1  00164158 ?
+    2  002efa8c                       bottom pos/size            11,    15  0016769c ?
+    1  002e169c                       bottom pos/size             0,   190  0016769c ?
+    1  0026c1a8                       top    pos               -142,    33  0016769c ?

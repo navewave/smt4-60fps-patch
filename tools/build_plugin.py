@@ -19,7 +19,7 @@ FULL_IPS, HW_IPS = f'{ROOT}/out/{NAME}{SFX}_code.ips', f'{ROOT}/out/{NAME}{SFX}_
 LOAD = 0x07000000                 # plugin memory; PluginHeader (0x100) is written there by the loader
 ENTRY = LOAD + 0x100              # .3gx code is loaded here and called
 FRAME_BEGIN = 0x101B8C            # the core's "bl hk_frame_begin"
-BSS_ADD = 0x5000                  # pages up to 0x4F5000 (ext6 at 0x4F4000 needs the fifth)
+BSS_ADD = 0x5000                  # pages up to 0x4F5000 (ext6 at 0x4F4000 needs the fifth); +0x1000 with a core page
 
 def ips_records(path):
     """[(address, bytes)]; RLE records expanded"""
@@ -66,16 +66,25 @@ print(f'{B.R["name"]}: extension diff {len(runs)} runs, {sum(e - a for a, e in r
       f'pages {MAP_FIRST:#x}-{MAP_LAST + 0x1000:#x}; game-code words: ' + ', '.join(f'{a:#x}+{e - a}' for a, e in text_runs))
 
 # ---- 2. frame-time logic gate ------------------------------------------------------
+# The trampoline always sits in the text cave (mapped on every boot).  With a core page
+# (regions.py core_page) the core is part of the extension diff: plg_main writes it before it
+# patches the gate word, so the gate is looked up in the full image there.
 cave_at, cave_end = B.CAVE, B.CAVE_END
 TRAMP = cave_end - 8
-used = max(a + len(r) for a, r in ips_records(HW_IPS) if cave_at <= a < cave_end)
+used = max([a + len(r) for a, r in ips_records(HW_IPS) if cave_at <= a < cave_end], default=cave_at)
 assert used <= TRAMP and full[TRAMP - B.BASE:cave_end - B.BASE] == bytes(8), 'no room for the gate trampoline'
+core_img, core_at, core_end = (full, B.CORE, B.CORE_END) if B.CORE_IN_PAGE else (hw, cave_at, used)
 fb = B.P(FRAME_BEGIN)
 HK_FRAME_BEGIN = arm_target(fb, w_at(hw, fb))
-assert cave_at <= HK_FRAME_BEGIN < cave_end
-gate = [a for a in range(cave_at, used - 7, 4) if (w_at(hw, a), w_at(hw, a + 4)) == (0xE3A0243F, 0xE5812008)]
+assert core_at <= HK_FRAME_BEGIN < core_end
+gate = [a for a in range(core_at, core_end - 7, 4) if (w_at(core_img, a), w_at(core_img, a + 4)) == (0xE3A0243F, 0xE5812008)]
 assert len(gate) == 1, gate           # hk_task_gate: "mov r2, #0x3F000000 ; str r2, [r1, #8]" (r1 = STATE)
-for a, e in runs: assert not any(a <= x < e for x in (fb, gate[0], TRAMP)), 'extension diff touches the gate'
+for a, e in runs:
+    assert not any(a <= x < e for x in (fb, TRAMP)), 'extension diff touches the gate'
+    assert B.CORE_IN_PAGE or not a <= gate[0] < e, 'extension diff touches the gate'
+if B.CORE_IN_PAGE:
+    BSS_ADD = max(BSS_ADD, (MAP_LAST + 0x1000 - B.R['bss_end'] + 0xFFF) & ~0xFFF)
+    assert MAP_FIRST <= B.CORE and B.CORE_END - 0x1000 <= MAP_LAST, 'core page not in the plugin map check'
 
 # ---- config header, compile, link -------------------------------------------------
 bd = f'{ROOT}/build/plugin{SFX}'; os.makedirs(bd, exist_ok=True)

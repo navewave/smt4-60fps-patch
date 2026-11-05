@@ -5,11 +5,16 @@ Every hex constant in the sources that lies in the game's code/data range is map
            pointer-like literals ignored), widening the window when ambiguous;
            function pointers fall back to literal-pool votes
   data   : literal-pool votes (USA literal word d at i -> same pool slot in the target)
-Patch memory (STATE block, extra pages) is not mapped here; build.py shifts it."""
+Patch memory (STATE block, extra pages) is not mapped here; build.py shifts it.
+
+Apocalypse in other regions (base='apoc' in tools/regions.py): Chain maps every Apocalypse
+USA address the patch uses (the values of ports/apoc.json and the native_* entries) into the
+version, writes that map to ports/<key>_native.json, and ports/<key>.json = ports/apoc.json
+followed by it.  Run tools/port.py apoc first after changing addresses."""
 import os, re, sys, json
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regions import region, ROOT
+from regions import region, family, REGIONS, ROOT
 
 B = 0x100000
 SRC = ['patch/phase3b.S', 'patch/interp.h', 'patch/interp_arm.c', 'patch/interp_thumb.c', 'patch/interp_ext.c',
@@ -17,9 +22,11 @@ SRC = ['patch/phase3b.S', 'patch/interp.h', 'patch/interp_arm.c', 'patch/interp_
 NOT_ADDR = {0x100000, 0x400000,                                     # pointer / offset bounds
             0x3FE3F8, 0x42AF30,                                     # USA 1.1 layout (old build.py)
             0x3FE624, 0x3FE628, 0x3FE640, 0x3FF000, 0x42AB78, 0x42AB80, 0x42B000,  # USA layout (build.py)
-            0x4EFE34, 0x4EFF00, 0x4EFFF4, 0x454F46}                 # comments, IPS 'EOF'
+            0x4EFE34, 0x4EFF00, 0x4EFFF4, 0x454F46,                 # comments, IPS 'EOF'
+            0x145F94, 0x146020, 0x155CA8, 0x156478, 0x156994, 0x2DD40C, 0x3F9C6C}   # Apocalypse addresses in comments
 OPTIONAL_SITES = {0x1ECE64, 0x1ECF54, 0x1FC4AC}                       # COMBG line/dot draw calls, nav map draw call
 # hand-checked corrections per version: {USA 1.0 address: address in that version}
+# (Apocalypse versions other than apoc: {Apocalypse USA address: address in that version})
 MANUAL = {
     'apoc': {
         0x10946C: 0x13DCA8,   # XFADEDL counter "add r0,r0,#1": Apocalypse keeps it in a global (ldr r0,[r1]; add; str)
@@ -51,6 +58,12 @@ MANUAL = {
         0x266284: 0x36A548,   # camera placement "vstr s0,[r4,#100]" (window search was one word late)
         0x2D22FC: 0x339D8C,   # mode-0 camera "ldr r0,[r9,#4]" after the yaw update (r9 = 0x5806A0)
         0x25C484: 0x324B7C,   # free-roam hand-off "vstmia r1,{s0-s2}" (function 0x324B68)
+        # 30 Hz detector stack walk: return addresses inside the 2D draw helpers (QD_WALK, diag builds)
+        0x2C1D2C: 0x164158, 0x2B7A94: 0x16769C,   # rect-draw wrappers (0x1640CC, 0x167618), same frames
+        0x2A93B8: 0x19BE64,   # layout pane renderer 0x19B770
+        0x2B007C: 0x185824, 0x2AFC94: 0x1852D0,   # cell renderer 0x184EFC: rect and pane calls
+        0x2BF548: 0x1836A0, 0x2BF6A8: 0x164CB0,   # CellPut 0x1835B4, 0x164B5C -> cell renderer
+        0x2B0778: 0x184A98, 0x2B09A8: 0x185E74,   # 0x1849BC, 0x185DD4 -> cell renderer
     },
 }
 PATCH_LO = 0x4EFE38                                                 # patch STATE and pages: shifted by build.py
@@ -64,6 +77,7 @@ def consts():
     return sorted(out)
 
 class Port:
+    PTR_HI = 0x500000                    # literals below this count as pointers (wildcards)
     def __init__(self, key):
         self.R = region(key)
         self.U = region('us10')
@@ -107,12 +121,11 @@ class Port:
         if votes[best] < need or sorted(votes.values())[-2:-1] == [votes[best]]: return []
         return [best]
 
-    @staticmethod
-    def mask(w):
+    def mask(self, w):
         m = w.astype(np.int64)
         br = ((w >> 25) & 7) == 5
         m = np.where(br, (w & 0xFF000000).astype(np.int64), m)    # B/BL: kind only
-        ptr = (w >= 0x100000) & (w < 0x500000)
+        ptr = (w >= 0x100000) & (w < self.PTR_HI)
         return np.where(ptr, -1, m)                               # pointer-like: wildcard
 
     def map_text(self, a, before=12, after=20, rng=0x8000):
@@ -218,7 +231,7 @@ class Port:
                 m = [a + dl] if dl is not None else []
             if len(m) == 1:
                 v = int(self.wn[(m[0] - B) // 4])
-                if 0x100000 <= v < 0x500000: out[v] = out.get(v, 0) + 1
+                if 0x100000 <= v < self.PTR_HI: out[v] = out.get(v, 0) + 1
         return out
 
     def run(self):
@@ -285,12 +298,111 @@ class Port:
                 notes.append(f'{v:#x} -> {t:#x}: function entry maps to a non-entry: check it')
         return mp, bad, notes
 
+class Chain(Port):
+    """Apocalypse USA -> another version of Apocalypse (same game, small shifts)"""
+    PTR_HI = 0x700000                    # Apocalypse data and .bss run to 0x64C11C
+    def __init__(self, key):
+        self.R, self.U = region(key), region(family(key))
+        a = open(self.U['code'], 'rb').read(); n = open(self.R['code'], 'rb').read()
+        self.wa = np.frombuffer(a[:len(a) // 4 * 4], '<u4')
+        self.wn = np.frombuffer(n[:len(n) // 4 * 4], '<u4')
+        self.ma, self.mn = self.mask(self.wa), self.mask(self.wn)
+        self.na = (self.U['text_end'] - B) // 4
+        self.nn = (self.R['text_end'] - B) // 4
+        self.glob = False
+
+    def text(self, a):
+        r, how = Port.text(self, a)
+        if r is None:                                        # moved further than the window search reaches
+            if not hasattr(self, 'gkeys'): self.build_index()
+            g = self.map_global(a) or self.map_global(a, 48, 2)
+            if g: return g[0], 'global'
+        return r, how
+
+    def data(self, v):
+        vt = self.votes(v)
+        if not vt:                                           # reached as base + offset
+            for k in range(4, 0x100, 4):
+                vb = self.votes(v - k)
+                if vb: vt = {kk + k: c for kk, c in vb.items()}; break
+        if not vt: return None, 'no literal refs', None
+        r = max(vt, key=vt.get)
+        split = f'{v:#x}: ' + ', '.join(f'{k:#x}x{c}' for k, c in vt.items()) if len(vt) > 1 else None
+        return r, f'votes {vt[r]}/{sum(vt.values())}', split
+
+    def run(self):
+        key, fam = self.R['key'], family(self.R['key'])
+        base = {int(k, 16): int(v, 16) for k, v in json.load(open(f'{ROOT}/ports/{fam}.json')).items()}
+        b = REGIONS[fam]
+        native = set(b.get('native_consts', [])) | set(b.get('native_syms', {}).values()) \
+                 | {s['addr'] for s in b.get('native_sites', [])} | {x for o in b.get('native_own', []) for x in o}
+        want = sorted({v for v in base.values() if v > B} | native)
+        mp, bad, notes = {}, [], []
+        self.how = {}
+        for v in want:
+            if v < self.U['text_end']: r, how = self.text(v)
+            else:
+                r, how, split = self.data(v)
+                if split: notes.append(split)
+            if r is None: bad.append((v, how))
+            else: mp[v] = r; self.how[v] = how
+        # data nobody loads directly (reached through a far base): the shift of the nearest mapped data
+        dat = sorted(v for v in mp if v >= self.U['text_end'])
+        for v, how in list(bad):
+            near = min(dat, key=lambda d: abs(d - v), default=None)
+            if v >= self.U['text_end'] and near is not None and abs(near - v) < 0x40000:
+                mp[v] = v + mp[near] - near; self.how[v] = f'shift of {near:#x}'
+                notes.append(f'{v:#x}: no literal refs, took the shift of {near:#x} ({mp[near] - near:+#x}): check it')
+                bad.remove((v, how))
+        for v, t in MANUAL.get(key, {}).items():
+            mp[v] = t; self.how[v] = 'manual'
+            bad[:] = [(x, h) for x, h in bad if x != v]
+        # hook continuations (site + 4): two code words 4 apart move together
+        for v in want:
+            if v in mp and v + 4 in mp and v + 4 < self.U['text_end'] and mp[v + 4] != mp[v] + 4:
+                notes.append(f'{v + 4:#x}: {mp[v + 4]:#x} -> {mp[v] + 4:#x} (follows {v:#x})')
+                mp[v + 4] = mp[v] + 4
+        # owner ranges (CI_OWN through the base map, and native_own): drop when the size changed a lot
+        src = open(os.path.join(ROOT, 'patch/interp_ext.c'), encoding='utf-8').read()
+        blk = src[src.index('CI_OWN[][2] = {'):]
+        pairs = [(base.get(int(lo, 16), 0), base.get(int(hi, 16), 0))
+                 for lo, hi in re.findall(r'\{ 0x([0-9A-Fa-f]{8})u, 0x([0-9A-Fa-f]{8})u \}', blk[:blk.index('};')])]
+        for lo, hi in pairs + list(b.get('native_own', [])):
+            if not lo or not hi: continue
+            if not (lo in mp and hi in mp and 0.7 <= (mp[hi] - mp[lo]) / (hi - lo) <= 1.4):
+                notes.append(f'owner range {lo:#x}-{hi:#x} dropped (UI code differs in this version)')
+                mp[lo] = mp[hi] = 0
+                bad[:] = [(v, h) for v, h in bad if v not in (lo, hi)]
+        # function entries must land on matching entries
+        for v, t in sorted(mp.items()):
+            if not (B < t < self.R['text_end'] and v < self.U['text_end']): continue
+            wu, wn = int(self.wa[(v - B) // 4]), int(self.wn[(t - B) // 4])
+            if wu >> 16 == 0xE92D and self.mask(np.array([wu], '<u4'))[0] != self.mask(np.array([wn], '<u4'))[0]:
+                notes.append(f'{v:#x} -> {t:#x}: function entry maps to a non-entry: check it')
+        # native hook sites: the original instruction must be there (build.py asserts it as well)
+        for s in b.get('native_sites', []):
+            t = mp.get(s['addr'])
+            if t:
+                w = int(self.wn[(t - B) // 4])
+                if not (w == s['expect'] or (s['expect'] >> 25) & 7 == 5 and w >> 24 == s['expect'] >> 24):
+                    notes.append(f"native site {s['addr']:#x} -> {t:#x}: word {w:08x}, expected {s['expect']:08x}")
+        self.native = mp
+        out = {}
+        for k, v in base.items():                # SMT IV USA -> Apocalypse USA -> this version
+            if v in (0, B): out[k] = v
+            elif v in mp: out[k] = mp[v]
+        return out, bad, notes
+
 if __name__ == '__main__':
     key = sys.argv[1]
-    P = Port(key)
+    chain = family(key) != key
+    P = Chain(key) if chain else Port(key)
     mp, bad, notes = P.run()
     os.makedirs(f'{ROOT}/ports', exist_ok=True)
     json.dump({f'{k:#x}': f'{v:#x}' for k, v in sorted(mp.items())}, open(f'{ROOT}/ports/{key}.json', 'w'), indent=1)
+    if chain:
+        json.dump({f'{k:#x}': f'{v:#x}' for k, v in sorted(P.native.items())}, open(f'{ROOT}/ports/{key}_native.json', 'w'), indent=1)
+        print(f'{key}: {len(P.native)} Apocalypse USA addresses mapped (ports/{key}_native.json)')
     print(f'{key}: {len(mp)} mapped, {len(bad)} unmapped')
     for n in notes: print('  vote split', n)
     for v, how in bad: print(f'  UNMAPPED {v:#x}: {how}')
