@@ -60,8 +60,9 @@ A New 3DS is recommended. An Old 3DS has not been tested and is likely too slow.
    - `SD:/luma/plugins/<title id>/smt4_60fps.3gx` (keep only one `.3gx` file in that folder)
 3. **Luma config** (hold SELECT while powering on): turn on *Enable game patching*.
 4. **Rosalina menu** (L + Down + Select on the HOME menu): set *Plugin Loader* to Enabled.
-5. **New 3DS:** in Rosalina's *New 3DS settings*, set the 804 MHz clock and turn the L2 cache on.
-6. Start the game from the HOME menu. The top screen flashes blue for a moment when the plugin loads.
+5. Start the game from the HOME menu. The top screen flashes blue for a moment when the plugin loads.
+
+On a New 3DS the patch turns on the 804 MHz clock and L2 cache by itself, so there's nothing to set in Rosalina's *New 3DS settings*.
 
 To uninstall, delete the three files.
 
@@ -70,8 +71,11 @@ To uninstall, delete the three files.
 The 3DS can't hold 60 fps everywhere, so expect drops in busy scenes (large areas, some battles, menus over the field). When that happens the patch falls back to 30 fps at full game speed instead of slowing the game down. To keep the frame rate up:
 
 - Turn the **3D slider off**. Stereo 3D draws every frame twice.
-- Use the **804 MHz clock and L2 cache** (step 5 above).
 - Enable the **optional cheats** below. They remove full-screen effects, which lightens the GPU load.
+
+**SMT IV: Apocalypse on an actual 3DS:** the 3D field and battles run at 60 fps, but the heavy menus (party, stats, demon sorting) stay at 30 fps. Drawing their top-screen 2D layer is too much for the 3DS at 60 fps. This was tested in detail and the patch can't fix it. Azahar runs these menus at 60.
+
+**Known issue on an actual 3DS:** the stats screen bars can stop short of their full length and replay their animation.
 
 ## What is smoothed
 

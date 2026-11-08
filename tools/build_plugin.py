@@ -150,6 +150,10 @@ assert B.R['bss_end'] + BSS_ADD >= MAP_LAST + 0x1000 - 0xFFF, 'exheader bss does
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'
+# New 3DS: ask for the 804 MHz clock + L2 cache (ARM11 local caps flag1, and its copy in the access
+# descriptor), so the game gets them without Rosalina's New 3DS menu.  Old 3DS ignores the bits.
+for o in (0x20C, 0x60C):
+    if o < len(exh): exh[o] |= 3
 open(f'{ROOT}/out/{NAME}{SFX}_exheader_hw.bin', 'wb').write(exh)
 print(f'{out}: {len(blob)} bytes (entry {ENTRY:#x}, ends {syms["_plg_end"]:#x}); '
       f'gate {fb:#x} -> {TRAMP:#x}, dt load {gate[0]:#x}; exheader bss +{BSS_ADD:#x} -> out/{NAME}{SFX}_exheader_hw.bin')

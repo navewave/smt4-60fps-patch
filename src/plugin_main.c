@@ -82,7 +82,7 @@ void plg_main(void)
 {
     u32 ok = 0;
     if (!mapped_rw(EXT_MAP_FIRST) || !mapped_rw(EXT_MAP_LAST)) ok |= 4;   /* no exheader.bin: no extension */
-    else if (ext_check()) {
+    else if (EXT_PATCH[0] && ext_check()) {      /* empty table: built with --no-ext */
         ext_apply();
         *(volatile u8 *)(STATE + 0x83) = 1;      /* emuChecked */
         *(volatile u8 *)(STATE + 0x82) = 1;      /* emu: the core calls the extension */
@@ -90,7 +90,8 @@ void plg_main(void)
         ok |= 1;
     }
     volatile u32 *t = (volatile u32 *)PLG_TRAMP;
-    if (*(volatile u32 *)GATE_CALL == GATE_CALL_OLD && *(volatile u32 *)GATE_DT == GATE_DT_OLD && !t[0] && !t[1]) {
+    if (GATE_CALL != 1u &&                       /* 1: built with --no-gate */
+        *(volatile u32 *)GATE_CALL == GATE_CALL_OLD && *(volatile u32 *)GATE_DT == GATE_DT_OLD && !t[0] && !t[1]) {
         t[0] = 0xE51FF004u;                      /* ldr pc, [pc, #-4] */
         t[1] = (u32)plg_frame_begin;
         *(volatile u32 *)(STATE + 0x1C0) = 0x3F000000u;   /* every-frame dt 0.5 until the gate runs */

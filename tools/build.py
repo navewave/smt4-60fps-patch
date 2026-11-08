@@ -116,6 +116,8 @@ def build(phase_src, sites, out_prefix, extra_raw=()):
                 cmd[1:1] = ['-DCI_OWN_NATIVE=' + ','.join('{0x%Xu,0x%Xu}' % o for o in R['native_own'])]
             cmd[1:1] = os.environ.get('SMT4_CFLAGS', '').split() + ['-Oz', '-ffreestanding', '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables',
                         '-fno-asynchronous-unwind-tables', '-ffunction-sections', '-Wall']
+        else:                                    # asm: the -D switches of SMT4_CFLAGS (diagnostic builds)
+            cmd[1:1] = [f for f in os.environ.get('SMT4_CFLAGS', '').split() if f.startswith('-D')]
         subprocess.check_call(cmd)
         objs.append(obj)
     lds = f'{ROOT}/build/cave.ld'

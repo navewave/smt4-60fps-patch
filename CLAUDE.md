@@ -7,8 +7,9 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 - The owner tests every build in **Azahar** (Windows) and on a **New 3DS (Luma3DS)**.
 - Last stable: **build 7d** (tag `v7d-stable`). Build 8 = public v1.0 assets as first uploaded (Azahar full + core-only Real_3DS).
 - Current: **build 12** = 8 + the full extension on an actual 3DS (3GX plugin, `src/plugin_main.c`), frame-time logic gate (hardware), clean cutscene camera cuts (ca_step). Tested: Azahar USA 1.0, New 3DS USA 1.0. Other versions build but are untested.
-- Candidate: **b13** (uncommitted, 2026-11-03) = 12 + relic scan, screen fades, battle zoom rule, 2D double-blend guard and vertex-colour fades for SMT IV; plus the Apocalypse port (a19 behaviour). SMT IV b13 = s15 (Azahar-tested USA 1.0); Apocalypse b13 Azahar-tested as a19; the actual-3DS files of both are untested on hardware.
-- Candidate: **b14** (uncommitted, 2026-11-05) = b13 + camp (main) menu cell owners in CI_OWN / native_own. Apocalypse b14 is confirmed on a New 3DS (menu 60 Hz; b13 was 30 Hz). SMT IV USA b14 menu confirmed at 60 Hz on a New 3DS (2026-11-05).
+- **b13** = 12 + relic scan, screen fades, battle zoom rule, 2D double-blend guard and vertex-colour fades for SMT IV; plus the Apocalypse port (a19 behaviour). **b14** (commit f01229e) = b13 + camp (main) menu cell owners; SMT IV USA b14 menus confirmed 60 Hz on a New 3DS.
+- Candidate release: **b15** (2026-11-07) = b14 game code byte for byte + the hardware exheader asks for the New 3DS 804 MHz clock and L2 cache (flag1 bits at 0x20C / 0x60C, tools/build_plugin.py), so Rosalina's New 3DS menu is no longer needed. Zips: releases/*_b15_*.zip.
+- Apocalypse on the N3DS (settled 2026-11-07, APOC_status.md): 3D field and battles 60 Hz; heavy menus (party, stats, sorting) 30 Hz because the game's own top-screen 2D drawing (left-eye 2D tasks, prio 0x78-0xCB) makes frames late at 60 Hz. Ruled out: clock, slider, bloom, the gate, our 2D hooks, the 3D scene, the right eye. Probe code (CIPROBE1-4, CIGAUGE, TASKPROBE cheat switches, XOFF) is kept as docs/notes/apoc_menu_probes.patch, not in the sources.
 - Versions: `tools/regions.py` (title IDs, files). Region game files live in `Other Regions Builds/` (private, gitignored).
 
 ## Directory map

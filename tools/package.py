@@ -64,12 +64,13 @@ Pick ONE of the two patch folders:
    Setup, once:
      - Luma config (hold SELECT while powering on): turn on "Enable game patching".
      - Rosalina menu (L + Down + Select on the HOME menu): set "Plugin Loader" to Enabled.
-     - New 3DS: Rosalina > "New 3DS settings": 804 MHz clock and L2 cache on.
+   On a New 3DS the patch turns on the 804 MHz clock and L2 cache by itself
+   (no Rosalina "New 3DS settings" needed).
    Start the game from the HOME menu: the top screen flashes blue briefly when the
    plugin loads. Same features as Azahar, plus a frame-drop fix: when a busy scene
    cannot hold 60 fps the game drops to 30 fps at full speed instead of slowing down.
    Performance: the 3DS cannot hold 60 fps everywhere. Turning the 3D slider off and
-   using the cheats below (they remove full-screen effects) can help.
+   using the cheats below (they remove full-screen effects) can help.{hwnote}
    To uninstall: delete the three files.
 
 Optional cheats (Cheats folder): ghosting fix and bloom removal by the GBAtemp
@@ -103,6 +104,12 @@ EXTRA = {
     'us11': "\nThis folder is for the 1.1 update (installed update data, internal version 1.2.0).\nUse the USA_1.0 package if the update is not installed.\n",
 }
 
+HWNOTE = {'apoc': "\n   Apocalypse on a real 3DS: the 3D field and battles run at 60 fps, but the heavy\n"
+                  "   menus (party, stats, demon sorting) stay at 30 fps. Their top-screen 2D drawing is too\n"
+                  "   much for the 3DS at 60 fps; tested, not fixable in the patch. Azahar runs them at 60."}
+HWNOTE_ALL = ("\n   Known issue on a real 3DS: the stats screen bars can stop short of their full length\n"
+              "   and replay their animation.")
+
 CORE_PAGE_NOTE = ("\nActual_3DS: in this version the 60 fps code does not fit inside the game's code, so the\n"
                   "plugin installs it. Always install all three files: code.ips without the .3gx plugin\n"
                   "(or with the Plugin Loader off) crashes the game at boot.\n")
@@ -132,7 +139,8 @@ def package(key):
         os.makedirs(os.path.dirname(f'{stage}/{dst}'), exist_ok=True)
         open(f'{stage}/{dst}', 'w', encoding='utf-8', newline='\n').write(text)
     game = R['name'] if family(key) == 'apoc' else f"Shin Megami Tensei IV, {R['name']}"
-    readme = README.format(build=f'release {REL} (build {BUILD})' if REL else f'build {BUILD}', name=R['name'], game=game,
+    hwnote = HWNOTE.get(family(key), '') + HWNOTE_ALL
+    readme = README.format(hwnote=hwnote, build=f'release {REL} (build {BUILD})' if REL else f'build {BUILD}', name=R['name'], game=game,
                            tid=tid, thread=THREAD, extra=EXTRA.get(key, '') + (CORE_PAGE_NOTE if R.get('core_page') else ''))
     open(f'{stage}/README.txt', 'w', encoding='utf-8', newline='\r\n').write(readme)
     zp = f'{ROOT}/releases/{name}.zip'
