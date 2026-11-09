@@ -7,6 +7,9 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 - The owner tests every build in **Azahar** (Windows) and on a **New 3DS (Luma3DS)**.
 - Last stable: **build 7d** (tag `v7d-stable`). Build 8 = public v1.0 assets as first uploaded (Azahar full + core-only Real_3DS).
 - Current: **build 12** = 8 + the full extension on an actual 3DS (3GX plugin, `src/plugin_main.c`), frame-time logic gate (hardware), clean cutscene camera cuts (ca_step). Tested: Azahar USA 1.0, New 3DS USA 1.0. Other versions build but are untested.
+- **b13** = 12 + relic scan, screen fades, battle zoom rule, 2D double-blend guard and vertex-colour fades for SMT IV; plus the Apocalypse port (a19 behaviour). **b14** (commit f01229e) = b13 + camp (main) menu cell owners; SMT IV USA b14 menus confirmed 60 Hz on a New 3DS.
+- Candidate release: **b15** (2026-11-07) = b14 game code byte for byte + the hardware exheader asks for the New 3DS 804 MHz clock and L2 cache (flag1 bits at 0x20C / 0x60C, tools/build_plugin.py), so Rosalina's New 3DS menu is no longer needed. Zips: releases/*_b15_*.zip.
+- Apocalypse on the N3DS (settled 2026-11-07, APOC_status.md): 3D field and battles 60 Hz; heavy menus (party, stats, sorting) 30 Hz because the game's own top-screen 2D drawing (left-eye 2D tasks, prio 0x78-0xCB) makes frames late at 60 Hz. Ruled out: clock, slider, bloom, the gate, our 2D hooks, the 3D scene, the right eye. Probe code (CIPROBE1-4, CIGAUGE, TASKPROBE cheat switches, XOFF) is kept as docs/notes/apoc_menu_probes.patch, not in the sources.
 - Versions: `tools/regions.py` (title IDs, files). Region game files live in `Other Regions Builds/` (private, gitignored).
 
 ## Directory map
@@ -29,6 +32,7 @@ This project is a 60 fps patch for **Shin Megami Tensei IV** (3DS, USA, title `0
 | `docs/notes/` | Detailed research notes. Start with `SMT4_60fps_findings.md`. |
 | `docs/RE_SETUP.md` | How to connect Ghidra (MCP) and Azahar's GDB stub for runtime debugging. |
 | `tools/gdb/` | GDB probe scripts for Azahar's stub (`sh tools/gdb/gdb.sh tools/gdb/X.gdb`): ping, tasks (live task list), watch/log probes; `whichbuild.py` reports which out/*_code.ips is running. |
+| `tools/import_game.py KEY IMAGE` | Puts a version's decompressed code.bin + exheader.bin from a decrypted .cia/.cxi/.3ds where regions.py expects them. |
 | `tools/cadence.py` | Per-region 30/60 Hz analysis of an OBS clip. |
 | `re/dump/taskfuncs.txt` | Task function -> task name map (from the registration calls). |
 
@@ -40,7 +44,7 @@ SMT4_REGION=us11 python3 tools/build_release.py phase10     # also eu, jp, kr, t
 python3 tools/build_plugin.py phase10                       # actual-3DS plugin + exheader (per region, after build_release)
 python3 tools/port.py <region>                              # regenerate ports/<region>.json after adding addresses
 python3 tools/verify_region.py                              # check runtime hook points in every version
-python3 tools/package.py 10 --release 1.0                   # releases/SMT4_60fps_v1.0_<VERSION>.zip: Azahar_full, Actual_3DS (luma/ SD layout), cheats, README
+python3 tools/package.py 10 --release 1.0                   # releases/<SMT4|SMT4A>_60fps_v1.0_<VERSION>.zip: Azahar_full, Actual_3DS (luma/ SD layout), cheats, README
 # release zips are not committed: they are attached to GitHub Releases (notes: docs/RELEASE_NOTES_v1.0.md)
 ```
 - New game addresses in the sources must be USA 1.0 addresses; re-run `tools/port.py` for every region afterwards.
@@ -93,7 +97,10 @@ python3 tools/package.py 10 --release 1.0                   # releases/SMT4_60fp
 | 0x4F3FCC / 0x4F3FD0 | camera log / anim-name table heap pointers (CAMLOG builds only) |
 | 0x4F3FD4 | CAMANIM_TICK: last tick a cutscene CameraAnimation stepped |
 | 0x4F3FD8 | CutRec (cam_cut history, 40 bytes, up to 0x4F4000) |
+| 0x4F5000 | core page: the core when the text cave is too small (regions.py `core_page`: Apocalypse EUR/JPN); plugin-written on hardware |
 | 0x4F2FB0 | CaRec (ca_step: held step, cut cache, 16 bytes) |
+| 0x4F2FC0–0x4F2FE0 | SMT IV relic scan (RL, RL_C, RL_T) and screen fade (FD, FD_SW) state (ext5, s13) |
+| STATE+0x06 | CAM_WIDE byte (SMT IV): set in battle by cam_cut, core cam_swap then allows 3000 per axis (not EUR: its cave has no room) |
 
 Ext data words:
 | Address | Use |
@@ -150,6 +157,7 @@ Ext data words:
   - README: warn that the USA 1.1 zip is only for consoles with the eShop update (the owner's N3DS crashed at boot with the 1.1 files on a 1.0 game: same title ID, wrong code.ips).
   - Actual-3DS builds of EUR/JPN/KOR/TWN/USA 1.1 are untested on hardware; Azahar tested on USA 1.0 only.
   - Apocalypse port: docs/notes/APOC_status.md.
+  - Apocalypse EUR / FINAL JPN 1.0 / 1.1 (`apoc_eu`, `apoc_jp`, `apoc_jp11`, family `apoc`): docs/notes/APOC_versions.md. Need decrypted files first (`tools/import_game.py`).
 
 ## Working with the owner
 - The owner tests and reports by eye ("30 Hz", "jumpy", "flicker"). Short 60 fps clips are recorded with Azahar → Tools → Dump Video or OBS. The clips are AV1: decode with `ffmpeg -c:v libdav1d`. Frame-difference per screen region shows what updates only every 2nd frame.

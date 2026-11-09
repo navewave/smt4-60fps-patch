@@ -39,6 +39,12 @@ typedef struct {
 #define S ((State *)0x004EFE38)          /* ends 0x4EFFF4 < 0x4F0000 */
 _Static_assert(sizeof(State) <= 0x4F0000 - 0x4EFE38, "state too big");
 
+#ifdef REGION_APOC
+#define CAM_WIDE (*(volatile u32 *)((u32)S + 0x6A4))   /* the camera move continues last tick's: blend past THR2 */
+#else
+#define CAM_WIDE (S->pad[0])                            /* in battle (cam_cut): blend past THR2 */
+#endif
+
 /* NW4C TransformNode: local translation, transform flags */
 #define NODE_TX(n)    (*(volatile float *)((n) + 0x58))
 #define NODE_TY(n)    (*(volatile float *)((n) + 0x68))

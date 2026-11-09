@@ -9,7 +9,12 @@ Without --all only ticks where the camera moved, and their neighbours, are print
 --reset clears the log (a new one is allocated on the next logic tick)."""
 import os, struct, subprocess, sys, tempfile, math
 GDB = r"C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-gdb.exe"
-CL_PTR, CL_N, REC = 0x4F3FCC, 512, 72
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from regions import region, family
+_KEY = os.environ.get('SMT4_REGION') or 'us10'
+APOC = family(_KEY) == 'apoc'                    # records: fast moves only
+PD = region(_KEY)['page_delta'] if _KEY != 'us10' else 0   # patch pages (Apocalypse USA: +0x15D000)
+CL_PTR, CL_N, REC = 0x4F3FCC + PD, 512, 72
 SIZE = 16 + CL_N * REC
 
 def gdb(cmds):
@@ -20,11 +25,11 @@ def gdb(cmds):
     return tmp, r.stdout + r.stderr
 
 if '--anims' in sys.argv:          # anims stepped at half frames (an_log in patch/interp_ext.c)
-    tmp, out = gdb(['dump binary memory $TMP/p.bin 0x4F3FD0 0x4F3FD4'])
+    tmp, out = gdb([f'dump binary memory $TMP/p.bin 0x{0x4F3FD0 + PD:X} 0x{0x4F3FD4 + PD:X}'])
     ap = struct.unpack('<I', open(f'{tmp}/p.bin', 'rb').read())[0]
     if ap < 0x100000: sys.exit(f'no anim table ({ap:#x})')
     if '--reset' in sys.argv:
-        gdb(['set {int}0x4F3FD0 = 0']); sys.exit('anim table cleared')
+        gdb([f'set {{int}}0x{0x4F3FD0 + PD:X} = 0']); sys.exit('anim table cleared')
     tmp, out = gdb([f'dump binary memory $TMP/a.bin 0x{ap:X} 0x{ap + 16 + 32 * 28:X}'])
     a = open(f'{tmp}/a.bin', 'rb').read()
     print(f'{"vtable":>8} {"count":>8} {"last tick":>9}  group / target')
@@ -56,7 +61,7 @@ for k, r in enumerate(recs):
     dp = [r['real'][i] - r['prev'][i] for i in range(3)]
     dt = [r['real'][i + 3] - r['prev'][i + 3] for i in range(3)]
     same = r['flags'] & 3 == 3
-    big = any(abs(x) > 150 for x in dp + dt)
+    big = any(abs(x) > (3000 if APOC and r['flags'] & 16 else 150) for x in dp + dt)
     moved = any(x != 0 for x in dp + dt)
     core = 'new' if not same else 'cut' if big else 'B' if moved else '-'
     cont = prevd is not None and k > 0 and recs[k - 1]['tick'] + 1 == r['tick'] and recs[k - 1]['cam'] == r['cam']
@@ -76,7 +81,8 @@ for i in sorted(show):
     cos = sum(a * b for a, b in zip(d6, p6)) / (L(d6) * L(p6)) if L(d6) and L(p6) else float('nan')
     f = 'F' if r['flags'] & 4 else ' '
     print(f'{r["tick"]:7d} {r["cam"]:08x} {r["scene"]:08x} {core:>4} {L(dp):8.2f} {L(dt):8.2f} {L(pp):8.2f} {L(pt):8.2f} '
-          f'{cos:6.2f} {r["fov"]:6.2f}{f}  ' + ' '.join(f'{x:8.1f}' for x in r['real'][:3]))
+          f'{cos:6.2f} {r["fov"]:6.2f}{f}  ' + ' '.join(f'{x:8.1f}' for x in r['real'][:3]) +
+          (f'  m{r["ctr"] >> 24}{"W" if r["flags"] & 16 else ""}{"G" if r["flags"] & 32 else ""}' if APOC else ''))
 if '--csv' in sys.argv:
     path = sys.argv[sys.argv.index('--csv') + 1]
     with open(path, 'w') as fp:

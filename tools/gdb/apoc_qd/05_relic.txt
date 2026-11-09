@@ -1,0 +1,20 @@
+reports: 18 sites, 1163 runs, 0 lost (table full)
+ runs  task                           screen what                      x,y  caller
+  659  002ba754                       bottom pos                202,  -167  00164158 ?
+  235  002e7a8c                       bottom pos/size             6,    55  0016769c ?
+   46  004a7260                       bottom pos/size           166,    25  0016769c ?
+   35  0014f3f4                       top    pos/size           259,     1  0016769c ?
+   34  002efa8c                       bottom pos/size           302,    32  0016769c ?
+   30  00202450                       top    pos/size            94,   221  0016769c ?
+   26  004a7260                       bottom pos                282,    94  00164158 ?
+   21  004a7588                       bottom pos/size             4,    25  0016769c ?
+   19  002e169c                       bottom pos/size             0,   220  0016769c ?
+   17  0025cf44                       bottom pos/size            51,    40  0016769c ?
+   14  004a7588                       bottom pos                 39,   175  00164158 ?
+    6  002a60c8                       top    pos/size           300,   113  0016769c ?
+    6  0013d0f0                       top    pos/size           201,     1  0016769c ?
+    5  00227418                       bottom pos                115,   158  00164158 ?
+    4  00227418                       bottom pos/size             0,   148  0016769c ?
+    4  0014f3f4                       top    pos                343,    21  00164158 ?
+    1  0026c1a8                       top    pos/size           -22,    33  0016769c ?
+    1  0022b2d4                       top    pos/size           -22,    33  0016769c ?

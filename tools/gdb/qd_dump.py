@@ -5,11 +5,17 @@ Each row: a 2D draw site that changed only on logic frames for >= 3 ticks in a r
   lr    = return address into the function that called the quad function (FUN_002B1590)
   what  = pos / size / colour (alpha, fades)
   runs  = how many separate 30 Hz runs were seen
---reset clears the report (to test one area at a time)."""
+--reset clears the report (to test one area at a time).
+Apocalypse: set SMT4_REGION=apoc (patch pages at +0x15D000; addresses only, no names)."""
 import os, struct, subprocess, sys, tempfile, bisect
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GDB = r"C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-gdb.exe"
-QD_PTR, QD_N, QD_R = 0x4F3FC0, 512, 160
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+from regions import region, family
+_KEY = os.environ.get('SMT4_REGION') or 'us10'
+APOC = family(_KEY) == 'apoc'
+PD = region(_KEY)['page_delta'] if _KEY != 'us10' else 0   # patch pages (Apocalypse USA: +0x15D000)
+QD_PTR, QD_N, QD_R = 0x4F3FC0 + PD, 512, 160
 OFF_REP = 16 + 64 * 12 + QD_N * 44
 SIZE = OFF_REP + QD_R * 48
 
@@ -33,11 +39,11 @@ magic, hits, lost = struct.unpack_from('<III', t, 0)
 if magic != 0x31304451: sys.exit(f'bad magic {magic:#x}')
 
 names = {}
-for l in open(f'{ROOT}/re/dump/taskfuncs.txt'):
+for l in [] if APOC else open(f'{ROOT}/re/dump/taskfuncs.txt'):
     p = l.split(None, 2)
     if p[0] != '????????': names.setdefault(int(p[0], 16), set()).add(p[2].strip())
 funcs = []
-for l in open(f'{ROOT}/re/dump/decomp.c.funcs.txt'):
+for l in [] if APOC else open(f'{ROOT}/re/dump/decomp.c.funcs.txt'):
     p = l.split()
     if len(p) >= 4: funcs.append((int(p[0], 16), p[3]))
 funcs.sort(); starts = [a for a, _ in funcs]

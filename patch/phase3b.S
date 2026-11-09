@@ -60,6 +60,9 @@ hk_frame_begin:
 @ top/bottom screen fades.  Logic frames only.
 @ ---------------------------------------------------------------------
 hk_fade:
+#ifdef REGION_APOC
+        b       fade_step               @ every frame: midpoint on logic frames
+#endif
         ldr     r0, =STATE
         ldrb    r0, [r0, #4]
         cmp     r0, #0
@@ -124,6 +127,9 @@ hk_task_gate:
         sub     r2, r2, #0x610          @ "AsdModelCalcProc"  (0x610)
         cmp     r2, #0
         cmpne   r2, #0x48               @ "AsdMdlManCalcProc" (0x658)
+#ifdef REGION_APOC
+        cmnne   r2, #0x19               @ "h3dModelCalcProc"  (0x5F7): Apocalypse's model system (hk_h3d_model)
+#endif
         bne     .Lgated
 .Levery:                                @ runs every frame, dt = 0.5
         ldr     r1, =STATE
@@ -216,6 +222,59 @@ hk_blend:
         pop     {r12}
         bx      lr
 #ifdef REGION_APOC
+@ ---------------------------------------------------------------------
+@ Apocalypse h3d models (characters): "h3dModelCalcProc" (0x145F94) loops
+@ over its models and calls the per-model update 0x156994(model, r1, step s0),
+@ which builds the root matrix from the model's position (+0x1B4), steps
+@ its animations by s0 and updates the skeleton.  The task gate now runs
+@ it every frame, so the step is scaled by g_dt, and h3d_pre/h3d_post draw
+@ the model at the midpoint of the last two ticks on logic frames.
+@ bl from 0x146020 (the loop's call).
+@ ---------------------------------------------------------------------
+        .global hk_h3d_model
+hk_h3d_model:
+        push    {r4-r8, lr}
+        vpush   {d8}
+        mov     r4, r0
+        mov     r5, r1
+        ldr     r12, =STATE
+        vldr    s16, [r12, #8]
+        vmul.f32 s16, s16, s0           @ anim step * g_dt
+        bl      h3d_pre                 @ r0 = model
+        mov     r0, r4
+        mov     r1, r5
+        vmov.f32 s0, s16
+        bl      H3dModelUpdate          @ 0x156994
+        mov     r0, r4
+        bl      h3d_post
+        vpop    {d8}
+        pop     {r4-r8, pc}
+
+@ Relic scan tiles: relic_begin at the counter read, then the two int-to-float
+@ conversions of the counter take relic_begin's fraction.
+        .global hk_relic_begin, hk_relic_fade, hk_relic_rise
+hk_relic_begin:                         @ replaces ldr r6, [r4, #0x78]
+        push    {r0-r3, r12, lr}
+        mov     r0, r4
+        vmov.f32 s0, s16
+        bl      relic_begin
+        vmov.f32 s16, s0
+        pop     {r0-r3, r12, lr}
+        ldr     r6, [r4, #0x78]
+        bx      lr
+hk_relic_fade:                          @ replaces vcvt.f32.s32 s2, s2 (counter - 15)
+        vcvt.f32.s32 s2, s2
+        ldr     r0, =STATE + 0x690
+        vldr    s3, [r0]
+        vsub.f32 s2, s2, s3
+        bx      lr
+hk_relic_rise:                          @ replaces vcvt.f32.s32 s0, s0 (counter * layer)
+        vcvt.f32.s32 s0, s0
+        ldr     r12, =STATE + 0x690
+        vldr    s1, [r12, #4]
+        vmul.f32 s0, s0, s1
+        bx      lr
+
 @ SMT IV: Apocalypse adds a variable step ("vadd s0, s0, s2"): scale s2 instead of s19.
         .global hk_blend_s2
 hk_blend_s2:

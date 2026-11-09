@@ -238,11 +238,17 @@ static inline float f_of(u32 b) { union { u32 u; float f; } x; x.u = b; return x
 static inline u32 b_of(float f) { union { u32 u; float f; } x; x.f = f; return x.u; }
 
 static const WatchDef WDEF[NWATCH] = {
+#ifdef REGION_APOC    /* InfoWin work is *(0x57F574) (calc 0x156478, draw 0x155CA8); the port map picks 0x57F578 */
+    { 0x0057F574, 0x18,  2, 2 },  /* InfoWin text x offsets (int px), copied from its slide sprite +0x16C */
+#else                 /* Apocalypse: navi map differs; these write through the pointer */
     { 0x00447E88, 0x1C,  3, 0 },  /* player position (navi map tiles are offset by it)            */
     { 0x0044CDF0, 0x38,  2, 0 },  /* navi map scroll centre: FUN_00231F58 -> *(0x44CDF0)+0x38    */
+#endif
     { 0x0043E278, 0x28,  2, 1 },  /* camp menu ramps (tile scale/offset), stepped inside CAMPDL  */
+#ifndef REGION_APOC   /* Apocalypse: the map slide is a UI view (view_swap) */
     { 0x0044CDF0, 0x1A4, 2, 0 },  /* navi map slide offset (menu open/close)                     */
     { 0x0043E128, 0x18,  2, 2 },  /* InfoWin text x offsets (int px), copied from its slide sprite +0xD0 */
+#endif
     /* the navi draw is excluded from the generic quad interpolation (NOGEN) */
 };
 
@@ -264,6 +270,7 @@ typedef struct { u32 addr, tick, sw; u32 last[COMBG_N], cur[COMBG_N]; } BgRec;
 #define BG ((BgRec *)0x004F0F00u)        /* zero tail of the extension page, < 0x4F0FF0 */
 _Static_assert(0x4F0F00 + sizeof(BgRec) <= 0x4F0FF0, "BgRec");
 
+#ifndef REGION_APOC   /* Apocalypse: COMBG layout differs, bg_swap is off (bg_restore stays a no-op) */
 static void bg_swap(u32 t)
 {
     BgRec *b = BG;
@@ -284,6 +291,7 @@ static void bg_swap(u32 t)
     }
     b->addr = o; b->tick = t; b->sw = sw;
 }
+#endif
 
 static void bg_restore(void)
 {
@@ -473,6 +481,11 @@ __asm__(
  * moving the same way the tick before (a slide, not a jump) is drawn at
  * the midpoint.
  * --------------------------------------------------------------------- */
+#ifdef REGION_APOC
+#define CTX_TEX 0x11F0u                   /* bound texture: a new field moved the block by 12 */
+#else
+#define CTX_TEX 0x11E4u
+#endif
 #define QUAD_FN        0x002B1590u
 #define QUAD_ORIGWORD  0xEE305A01u        /* vadd.f32 s10, s0, s2 */
 #define Q_CNT   256
@@ -480,7 +493,12 @@ __asm__(
 #define Q_MAGIC 0x51554144u
 #define Q_MAXD  192.0f
 typedef struct { u32 base, stamp, n; } QCnt;
-typedef struct { u32 key, tick; float x, y, dx, dy; } QRec;
+#ifdef REGION_APOC
+typedef struct { u32 key, tick, tickL; float x, y, dx, dy, lx, ly; } QRec;
+#else
+typedef struct { u32 key, tick, tickL; float x, y, dx, dy, lx, ly; u32 col, lcol; } QRec;   /* col: in-between vertex colour, lcol: logic-frame input (q_col) */
+void q_col(QRec *r, u32 *c, u32 logic, u32 t);  /* vertex colour fades (ext5) */
+#endif
 typedef struct { u32 magic, pad[3]; QCnt c[Q_CNT]; QRec r[Q_REC]; } QTab;
 #define Q_HEAP (*(volatile u32 *)0x004F0FB4u)
 extern u32 GameAlloc_abs(u32 a, u32 b, u32 c, u32 size, u32 e);
@@ -516,7 +534,7 @@ void quad_interp(float *f)               /* f = saved s0..s7; only called when t
     QTab *T = q_tab();
     if (!T) return;
     u32 *b = (u32 *)f;
-    u32 tex = *(volatile u32 *)(*(volatile u32 *)0x0044EA00u + 0x11E4);
+    u32 tex = *(volatile u32 *)(*(volatile u32 *)0x0044EA00u + CTX_TEX);
     /* identity: texture + size + uv (5i rules: sizes are not interpolated) */
     u32 base = tex * 0x9E3779B1u ^ b[2] * 0x85EBCA77u ^ b[3] * 0xC2B2AE3Du ^ b[4] * 0x27D4EB2Fu ^ b[5] * 0x165667B1u;
     base |= 1;
@@ -547,9 +565,21 @@ found:;
         if (r->tick + 1 == t) { r->dx = x - r->x; r->dy = y - r->y; }
         else { r->dx = r->dy = 0.0f; }
         r->x = x; r->y = y; r->tick = t;
+#ifndef REGION_APOC
+        q_col(r, b + 16, 0, t);
+#endif
         return;
     }
     if (!r || r->tick + 1 != t) return;                /* logic frame */
+#ifndef REGION_APOC
+    q_col(r, b + 16, 1, t);                             /* before src60 below updates tickL */
+#endif
+    /* already blended upstream (sprite, view): last tick's logic frame and in-between
+     * frame differ.  A second midpoint would draw 1/4, 1, 1 1/4, 2: a 30 Hz limp
+     * (SMT IV battle result panel and skill name panel, Apocalypse map / Compendium). */
+    int src60 = r->tickL + 1 == t && (r->lx != r->x || r->ly != r->y);
+    r->lx = x; r->ly = y; r->tickL = t;
+    if (src60) return;
     float dx = x - r->x, dy = y - r->y;
     if (dx == 0.0f && dy == 0.0f) return;
     if (dx > Q_MAXD || dx < -Q_MAXD || dy > Q_MAXD || dy < -Q_MAXD) return;
@@ -611,6 +641,10 @@ static void hook_call(u32 site, u32 target, u32 to)
     icache_inval(site, 4);
 }
 
+#ifndef REGION_APOC
+void ext5_install(void);                        /* relic scan and screen fades (ext5) */
+#endif
+
 static void ext_install(void)
 {
     hook_call(COMBG_LINE_CALL, COMBG_BL_TARGET, (u32)ext_combg_line);
@@ -628,6 +662,16 @@ static void ext_install(void)
         put_branch(0x0025C0F0u, (u32)ext_setscale); icache_inval(0x0025C0F0u, 4);
     }
     if (*(volatile u32 *)QUAD_FN == QUAD_ORIGWORD) { put_branch(QUAD_FN, (u32)ext_quad); icache_inval(QUAD_FN, 4); }
+#ifndef REGION_APOC
+    if (CAMPAGE == 1) ext5_install();
+#endif
+#ifdef REGION_APOC
+    if (CAMPAGE == 1) {
+        extern char ViewSetXY[], AnimCamEval[], ext_view_set[], ext_animcam[];
+        if (*(volatile u32 *)ViewSetXY == 0xEE002A90u) { put_branch((u32)ViewSetXY, (u32)ext_view_set); icache_inval((u32)ViewSetXY, 4); }
+        if (*(volatile u32 *)AnimCamEval == 0xE92D41F0u) { put_branch((u32)AnimCamEval, (u32)ext_animcam); icache_inval((u32)AnimCamEval, 4); }
+    }
+#endif
 }
 
 /* ---------------------------------------------------------------------
@@ -636,17 +680,32 @@ static void ext_install(void)
  * arrays that "MAPIF C" fills at 30 Hz: tile e = *(0x447A78) + i*0x194
  * + 0x1D0 (128 tiles, active if *(u8*)e), five quads of 4 xyz vertices
  * at e+0x90..e+0x180 (60 floats).  Midpoint swap like the sprites.
+ * Apocalypse: same tiles, the array starts at +0x1DC.
  * --------------------------------------------------------------------- */
+#ifdef REGION_APOC
+#define MIF_BASE   0x1DC
+#else
+#define MIF_BASE   0x1D0
+#endif
 #define MIF_N      128
 #define MIF_SLOTS  32
+#ifdef REGION_APOC
+#define MIF_NF     61                   /* + e+0x180: the text wipe (right u of the second quad) */
+typedef struct { u32 key, tick, sw; float cur[MIF_NF]; u32 col; int ty; } MifRec;
+#else
 #define MIF_NF     60
-#define MIF_MAGIC  0x4D494631u
 typedef struct { u32 key, tick, sw; float cur[MIF_NF]; } MifRec;
+#endif
+#define MIF_MAGIC  0x4D494631u
 typedef struct { u32 magic, pad[3]; MifRec r[MIF_SLOTS]; } MifTab;
 #define MIF_HEAP (*(volatile u32 *)0x004F0FA8u)
 extern u32 GameAlloc_abs(u32 a, u32 b, u32 c, u32 size, u32 e);
 
+#ifdef REGION_APOC                                                 /* ext4 is full here */
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+#else
 #pragma clang section text=".ext4.text" rodata=".ext4.rodata"   /* needs the exheader (CAMPAGE) */
+#endif
 static MifTab *mif_tab(void)
 {
     u32 p = MIF_HEAP;
@@ -667,7 +726,7 @@ void mif_swap(u32 t)
     if (!T) return;
     t += 1;
     for (u32 i = 0; i < MIF_N; i++) {
-        u32 e = mif + i * 0x194 + 0x1D0;
+        u32 e = mif + i * 0x194 + MIF_BASE;
         if (!*(volatile u8 *)e) continue;
         MifRec *r = 0, *fr = 0;
         for (int k = 0; k < 4; k++) {
@@ -682,11 +741,23 @@ void mif_swap(u32 t)
         }
         if (r->tick == t || r->sw) continue;
         int ok = r->tick + 1 == t, moved = 0;
+#ifdef REGION_APOC
+        int ty = *(volatile short *)(e + 0xC);             /* a new state rebuilds the quads for another look: no midpoint */
+        if (ty != r->ty) ok = 0;
+        r->ty = ty;
+#endif
         if (ok) for (int k = 0; k < MIF_NF; k++) {
             float d = v[k] - r->cur[k];
             if (!(d * d <= 300.0f * 300.0f)) { ok = 0; break; }
             if (d != 0.0f) moved = 1;
         }
+#ifdef REGION_APOC
+        volatile u32 *cw = (volatile u32 *)(e + 0x80);     /* colour: the fade-in steps its low byte */
+        u32 col = *cw;
+        int fade = ok && col != r->col && (col ^ r->col) < 0x100u;
+        if (fade) { moved = 1; *cw = (col & ~0xFFu) | ((col & 0xFFu) + (r->col & 0xFFu)) >> 1; }
+        r->col = col;
+#endif
         for (int k = 0; k < MIF_NF; k++) {
             float c = v[k];
             if (ok && moved) v[k] = (c + r->cur[k]) * 0.5f;
@@ -707,6 +778,9 @@ void mif_restore(void)
         if (!r->sw) continue;
         volatile float *v = (volatile float *)(r->key + 0x90);
         for (int j = 0; j < MIF_NF; j++) v[j] = r->cur[j];
+#ifdef REGION_APOC
+        *(volatile u32 *)(r->key + 0x80) = r->col;
+#endif
         r->sw = 0;
     }
 }
@@ -852,7 +926,11 @@ void rot_restore(void)
  * fov is drawn at the midpoint (projection + stereo rebuilt) and put
  * back at run-end.  cam+0x28..0x34 = fov, aspect, near, far.
  * --------------------------------------------------------------------- */
+#ifdef REGION_APOC
 #pragma clang section text=".ext4.text" rodata=".ext4.rodata"   /* needs the exheader (CAMPAGE) */
+#else
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"   /* SMT IV ext4 is full (quad_interp) */
+#endif
 typedef struct { u32 tick, cam, sw; float last, tru, mid; } FovRec;
 #define FOV ((volatile FovRec *)0x004F0FD8u)    /* 24 bytes, up to 0x4F0FF0 */
 extern void CamSetProj_abs(void *cam, int rot, float fov, float aspect, float nr, float fr);
@@ -875,6 +953,7 @@ __attribute__((noinline)) static void fov_swap(void)
     int cont = R->tick + 1 == t && R->cam == cam;
     R->tick = t; R->cam = cam; R->last = f;
     float d = f - p;
+    if (IN_BATTLE && d != 0.0f) d = 0.5f;               /* battle zooms: any fov step (see cam_cut) */
     if (!cont || d == 0.0f || d > 30.0f || d < -30.0f || !(f > 1.0f && f < 170.0f)) return;
     R->tru = f; R->mid = (f + p) * 0.5f; R->sw = 1;
     fov_proj(cam, R->mid);
@@ -951,26 +1030,45 @@ __attribute__((noinline)) static void dc_swap(u32 t)
  *  - "EVE_BustupTex", calc FUN_001CE3A4 (BustupCutAnim scenes): +0x34..
  *    +0x3C centre, +0x58 x offset, +0x1C/+0x20 half size, +0x28/+0x88
  *    alpha; drawn by FUN_001DBB54.
- * The prio-2 task list is walked on logic frames; listed fields are drawn
+ * The prio-2 task list (prio 4 in Apocalypse) is walked on logic frames; listed fields are drawn
  * at the midpoint of the last two ticks and put back at run-end.  A tick
  * that changes a portrait's state words (texture, mode, crossfade flag)
  * is not blended: an expression change starts its crossfade by jumping the
  * old face's alpha +0x88 from 0 to 1 together with the texture swap.
  * --------------------------------------------------------------------- */
 #pragma clang section text=".ext5.text" rodata=".ext5.rodata"   /* third extra page: needs the exheader */
+#ifdef REGION_APOC
+#define PT_PRIO 4
+#define PT_NF 11
+#define PT_N  10
+#define PT_N0 4                                  /* fields of PT_DEF[0] */
+#else
+#define PT_PRIO 2
 #define PT_NF 8
 #define PT_N  12
-typedef struct { u32 w, tick, sw, sig; u32 last[PT_NF], tru[PT_NF]; } PtRec;   /* 80 bytes */
+#define PT_N0 3
+#endif
+typedef struct { u32 w, tick, sw, sig; u32 last[PT_NF], tru[PT_NF]; } PtRec;   /* 80 bytes, Apocalypse 104 */
+#ifdef REGION_APOC
+#define PT ((PtRec *)((u32)S + 0xA80))           /* 1040 bytes, State tail */
+#else
 #define PT ((PtRec *)0x004F3C00u)                /* 12 * 80 bytes, ext5 data */
+#endif
 typedef struct { u32 fn; u8 nint, n, off[PT_NF], g[4]; } PtDef;   /* first nint fields are ints; g = state words */
 static const PtDef PT_DEF[2] = {
-    { 0x001DFB60u, 1, 3, { 0x10, 0x1C, 0x24 }, { 0x0C, 0x3C, 0x40, 0x48 } },
+#ifdef REGION_APOC   /* a new word before them moved the texture and object fields by 4; +0x14 y slide */
+    { 0x001DFB60u, 2, PT_N0, { 0x10, 0x14, 0x1C, 0x24 }, { 0x0C, 0x40, 0x44, 0x4C } },
+    /* new here: position offsets +0x90 / +0x94, tweened with the centre, and the second alpha +0x2C */
+    { 0x001CE3A4u, 0, 11, { 0x34, 0x38, 0x3C, 0x58, 0x1C, 0x20, 0x28, 0x88, 0x90, 0x94, 0x2C }, { 0x0C, 0x24, 0x80, 0x8C } },
+#else
+    { 0x001DFB60u, 1, PT_N0, { 0x10, 0x1C, 0x24 }, { 0x0C, 0x3C, 0x40, 0x48 } },
     { 0x001CE3A4u, 0, 8, { 0x34, 0x38, 0x3C, 0x58, 0x1C, 0x20, 0x28, 0x88 }, { 0x0C, 0x24, 0x80, 0x8C } },
+#endif
 };
 __attribute__((noinline)) static void pt_swap(u32 t)
 {
     PtRec *r = PT;
-    for (u32 k = *(volatile u32 *)(*(volatile u32 *)0x004E3CF4u + 2 * 8); k && r < PT + PT_N; k = *(u32 *)(k + 0x4C)) {
+    for (u32 k = *(volatile u32 *)(*(volatile u32 *)0x004E3CF4u + PT_PRIO * 8); k && r < PT + PT_N; k = *(u32 *)(k + 0x4C)) {
         u32 fn = *(u32 *)(k + 0x3C), w = *(u32 *)(k + 0x48);
         const PtDef *d = fn == PT_DEF[0].fn ? &PT_DEF[0] : fn == PT_DEF[1].fn ? &PT_DEF[1] : 0;
         if (!d || w < 0x00100000u) continue;
@@ -1006,11 +1104,184 @@ __attribute__((noinline)) static void pt_restore(void)
 {
     for (PtRec *r = PT; r < PT + PT_N; r++) {
         if (!r->sw) continue;
-        const PtDef *d = r->sw == 3 ? &PT_DEF[0] : &PT_DEF[1];
+        const PtDef *d = r->sw == PT_N0 ? &PT_DEF[0] : &PT_DEF[1];
         for (int f = 0; f < d->n; f++) *(u32 *)(r->w + d->off[f]) = r->tru[f];
         r->sw = 0;
     }
 }
+
+#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+#ifdef REGION_APOC
+/* ---------------------------------------------------------------------
+ * h3d model rotation: 3x4 at model+0x1C0 (rows 0x10 apart, set whole by
+ * 0x1AB7xx), turned by logic at 30 Hz (equip screen turntable, characters
+ * turning).  The core's h3d_pre / h3d_post call this around each model
+ * update on logic frames (extension only): the update builds the root
+ * matrix from the midpoint rotation (row lerp, each row at its true length),
+ * then the true rotation goes back.  Same snap rules as rot_swap.
+ * --------------------------------------------------------------------- */
+typedef struct { u32 m, tick, sw; float R[9], T[9]; } HRot;      /* 84 bytes */
+#define HR_N 16
+#define HR_HEAP (*(volatile u32 *)0x004F0FBCu)
+static u32 heap_tab(volatile u32 *slot, u32 magic, u32 size);
+#define HROT(m, r, j) (((volatile float *)((m) + 0x1C0))[(r) * 4 + (j)])   /* row r, column j; 4 floats per row */
+static float hr_len(const float *v) { return __builtin_sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+void h3d_rot(u32 m, u32 post)
+{
+    u32 hp = heap_tab(&HR_HEAP, 0x31524848u, 16 + HR_N * sizeof(HRot));
+    if (!hp) return;
+    HRot *H = (HRot *)(hp + 16), *h = 0, *fr = 0;
+    u32 t = tick_now();
+    for (int i = 0; i < HR_N; i++) {
+        if (H[i].m == m) { h = &H[i]; break; }
+        if (!fr && H[i].tick + 2 <= t) fr = &H[i];
+    }
+    if (post) {
+        if (h && h->sw) { for (int r = 0; r < 3; r++) for (int j = 0; j < 3; j++) HROT(m, r, j) = h->T[r * 3 + j]; h->sw = 0; }
+        return;
+    }
+    if (!h) { if (!fr) return; h = fr; h->m = m; h->tick = 0; }
+    if (h->tick == t) return;                           /* second update in this tick */
+    float c[9], mid[9];
+    for (int r = 0; r < 3; r++) for (int j = 0; j < 3; j++) c[r * 3 + j] = HROT(m, r, j);
+    int ok = h->tick + 1 == t, diff = 0;
+    for (int r = 0; r < 3 && ok; r++) {
+        float *a = &h->R[r * 3], *b = &c[r * 3], *o = &mid[r * 3];
+        float la = hr_len(a), lb = hr_len(b);
+        if (!(la > 1e-4f && lb > 1e-4f)) { ok = 0; break; }
+        float d = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb), lr = la / lb;
+        if (d < 0.7f || lr > 1.02f || lr < 0.98f) { ok = 0; break; }   /* > ~45 deg or scale change: snap */
+        if (a[0] != b[0] || a[1] != b[1] || a[2] != b[2]) diff = 1;
+        for (int k = 0; k < 3; k++) o[k] = a[k] + b[k];
+        float lo = hr_len(o);
+        for (int k = 0; k < 3; k++) o[k] *= lb / lo;
+    }
+    h->tick = t; h->sw = ok && diff;
+    for (int r = 0; r < 3; r++) for (int j = 0; j < 3; j++) {
+        int k = r * 3 + j;
+        if (h->sw) { h->T[k] = c[k]; HROT(m, r, j) = mid[k]; }
+        h->R[k] = c[k];
+    }
+}
+#else
+/* ---------------------------------------------------------------------
+ * SMT IV ports of two Apocalypse fixes (relic_begin and fade_step in
+ * interp_arm.c, core code there).  The SMT IV core cave is full, so these
+ * are installed at runtime by ext_install (extension pages only).
+ * Relic scan tiles: FUN_0020DC34 is the same draw with the work fields 0x34
+ * lower (size code +0x40, counter +0x44); a logic frame draws the counter
+ * half a step back and the midpoint of the last two tile sizes.
+ * Screen fades: ScreenFadeUpdate's two 0x14-byte records at 0x4D9758, alpha
+ * at +0; a logic frame shows the midpoint of the last two ticks.
+ * Data after CaRec, before SCL_ANY.
+ * --------------------------------------------------------------------- */
+#define RL    ((volatile float *)0x004F2FC0u)     /* [0] counter fraction, [1] height scale, [2] tile size */
+#define RL_C  (*(volatile int *)0x004F2FCCu)
+#define RL_T  (*(volatile u32 *)0x004F2FD0u)
+#define FD    ((volatile float *)0x004F2FD4u)     /* true alpha, top and bottom */
+#define FD_SW (*(volatile u32 *)0x004F2FDCu)      /* up to 0x4F2FE0 */
+#define FADE_RECS ((volatile float *)0x004D9758u)
+extern void ScreenFadeUpdate(void);
+void ext_fade(void)
+{
+    volatile float *F = FADE_RECS;
+    if (!S->logic) {
+        for (int i = 0; i < 2; i++) if (FD_SW & (1u << i)) F[i * 5] = FD[i];
+        FD_SW = 0;
+        return;
+    }
+    ScreenFadeUpdate();
+    u32 sw = 0;
+    for (int i = 0; i < 2; i++) {
+        float c = F[i * 5], d = c - FD[i];
+        if (d != 0.0f && d < 0.34f && d > -0.34f) { F[i * 5] = FD[i] + d * 0.5f; sw |= 1u << i; }
+        FD[i] = c;
+    }
+    FD_SW = sw;
+}
+float ext_relic_size(u32 w, float size)
+{
+    RL[0] = 0.0f; RL[1] = 1.0f;
+    if (!S->logic) return size;
+    u32 t = tick_now();
+    int c = *(volatile int *)(w + 0x44), cont = RL_T + 1 == t;
+    float p = RL[2];
+    if (cont && c == RL_C + 1) { RL[0] = 0.5f; RL[1] = ((float)c - 0.5f) / (float)c; }
+    RL_C = c; RL_T = t; RL[2] = size;
+    return cont ? (size + p) * 0.5f : size;
+}
+__asm__(
+"    .section .ext5.text.relic,\"ax\",%progbits\n"
+"    .arm\n"
+"    .global ext_relic_begin, ext_relic_fade, ext_relic_rise\n"
+"ext_relic_begin:\n"                    /* bl from 0x20DD60, replaces ldr r6, [r4, #0x44] */
+"    push  {r0, r1, r2, r3, r12, lr}\n"
+"    mov   r0, r4\n"
+"    vmov.f32 s0, s16\n"
+"    bl    ext_relic_size\n"
+"    vmov.f32 s16, s0\n"
+"    pop   {r0, r1, r2, r3, r12, lr}\n"
+"    ldr   r6, [r4, #0x44]\n"
+"    bx    lr\n"
+"ext_relic_fade:\n"                     /* bl from 0x20DD8C / 0x20DDC8, replaces vcvt.f32.s32 s2, s2 (counter - 15) */
+"    vcvt.f32.s32 s2, s2\n"
+"    ldr   r12, =0x004F2FC0\n"
+"    vldr  s3, [r12]\n"
+"    vsub.f32 s2, s2, s3\n"
+"    bx    lr\n"
+"ext_relic_rise:\n"                     /* bl from 0x20E200 / 0x20E384, replaces vcvt.f32.s32 s0, s0 (counter * layer) */
+"    vcvt.f32.s32 s0, s0\n"
+"    ldr   r12, =0x004F2FC0\n"
+"    vldr  s1, [r12, #4]\n"
+"    vmul.f32 s0, s0, s1\n"
+"    bx    lr\n"
+"    .ltorg\n"
+);
+/* Vertex colour fades in the generic 2D smoothing (quad_interp; c = the
+ * quad's four corner colours r0-r3, written back by ext_quad).  Battle UI
+ * fades (Effects panel dim and fade-out, skill name and info banners) set a
+ * colour/alpha per logic tick that only reaches the quads.  In-between
+ * frames record the colour; a logic frame draws the per-byte midpoint of
+ * the last two ticks.  Uniform quads only (all corners equal).  Left alone:
+ * a byte jumping more than 0x60 (blinks, flashes), and colours already
+ * blended upstream (last tick's logic-frame input differs from its
+ * in-between colour, e.g. a sprite alpha from spr_swap). */
+#define QC_NONE 0x01020304u
+void q_col(QRec *r, u32 *c, u32 logic, u32 t)
+{
+    u32 v = c[0];
+    int uni = c[1] == v && c[2] == v && c[3] == v;
+    if (!logic) { r->col = uni ? v : QC_NONE; return; }
+    u32 p = r->col, l = r->lcol;
+    int up = r->tickL + 1 == t && l != p;
+    r->lcol = uni ? v : QC_NONE;
+    if (!uni || p == QC_NONE || v == p || up) return;
+    u32 m = 0;
+    for (int s = 0; s < 32; s += 8) {
+        int a = (v >> s) & 0xFF, q = (p >> s) & 0xFF, d = a - q;
+        if (d > 0x60 || d < -0x60) return;
+        m |= (u32)((a + q) >> 1) << s;
+    }
+    c[0] = c[1] = c[2] = c[3] = m;
+}
+/* replace the instruction at site by "bl to" if it is still the expected word */
+static void put_bl(u32 site, u32 expect, u32 to)
+{
+    if (*(volatile u32 *)site != expect) return;
+    *(volatile u32 *)site = 0xEB000000u | (((to - (site + 8)) >> 2) & 0xFFFFFFu);
+    icache_inval(site, 4);
+}
+void ext5_install(void)
+{
+    extern char hk_fade[], ext_relic_begin[], ext_relic_fade[], ext_relic_rise[];
+    hook_call(0x00101E0Cu, (u32)hk_fade, (u32)ext_fade);
+    put_bl(0x0020DD60u, 0xE5946044u, (u32)ext_relic_begin);   /* ldr r6, [r4, #0x44] */
+    put_bl(0x0020DD8Cu, 0xEEB81AC1u, (u32)ext_relic_fade);    /* vcvt.f32.s32 s2, s2 */
+    put_bl(0x0020DDC8u, 0xEEB81AC1u, (u32)ext_relic_fade);
+    put_bl(0x0020E200u, 0xEEB80AC0u, (u32)ext_relic_rise);    /* vcvt.f32.s32 s0, s0 */
+    put_bl(0x0020E384u, 0xEEB80AC0u, (u32)ext_relic_rise);
+}
+#endif
 
 #ifdef QDIAG
 /* ---------------------------------------------------------------------
@@ -1037,7 +1308,11 @@ static const u32 QD_WALK[13][3] = {
     { (u32)ext_cell_c_ret, 10, 9 }, { (u32)ext_cell_w_ret, 10, 9 },
     { 0x002C1D2Cu, 16, 15 }, { 0x002B7A94u, 12, 11 },   /* rect-draw wrappers FUN_002C1CA0 / FUN_002B7A10 */
     { 0x002A93B8u, 62, 61 },                            /* layout pane renderer 0x2A8D68 */
+#ifdef REGION_APOC
+    { 0x002B007Cu, 104, 103 }, { 0x002AFC94u, 104, 103 },   /* cell renderer: larger frame here */
+#else
     { 0x002B007Cu, 94, 93 }, { 0x002AFC94u, 94, 93 },   /* cell renderer FUN_002AF8D0 (rect / pane calls) */
+#endif
     { 0x002BF548u, 22, 21 }, { 0x002B0778u, 22, 21 },   /* CellPut FUN_002BF460, FUN_002B06A0 */
     { 0x002B09A8u, 24, 23 }, { 0x002BF6A8u, 30, 29 },   /* FUN_002B0908, FUN_002BF558 */
 };
@@ -1055,7 +1330,7 @@ void quad_detect(u32 *f)
         QD_HEAP = hp;
     }
     QdTab *T = (QdTab *)hp;
-    u32 tex = *(volatile u32 *)(*(volatile u32 *)0x0044EA00u + 0x11E4);
+    u32 tex = *(volatile u32 *)(*(volatile u32 *)0x0044EA00u + CTX_TEX);
     u32 base = (tex * 0x9E3779B1u ^ f[4] * 0x27D4EB2Fu ^ f[5] * 0x165667B1u ^ f[6] * 0x85EBCA77u ^ f[7] * 0xC2B2AE3Du) | 1;
     u32 fr = S->counter, occ = 0;
     QCnt *c = &T->c[base >> 26];
@@ -1148,6 +1423,12 @@ static const u32 CI_OWN[][2] = {
     { 0x001A310Cu, 0x001A6B1Cu },   /* Status DrawUp */
     { 0x00288B10u, 0x00289008u },   /* battle HP / MP bars */
     { 0x002BEAE4u, 0x002BEF08u },   /* btlUI DrawDown */
+    { 0x002CA048u, 0x002CA650u },   /* SEARCH2D (search / scan screen: slide-in list and text) */
+    { 0x001A001Cu, 0x001A06D4u },   /* camp menu DDRAW (task named "TMD DDRAW", registered next to Camp DrawUp) */
+    { 0x00197054u, 0x00197D2Cu },   /* camp menu DDRAW helpers (two functions) */
+#ifdef CI_OWN_NATIVE
+    CI_OWN_NATIVE,                  /* this version's own owners (regions.py native_own) */
+#endif
 };
 #define CI_NOWN (sizeof(CI_OWN) / sizeof(CI_OWN[0]))
 static int ci_cont(int d, int p)
@@ -1453,6 +1734,15 @@ __attribute__((noinline)) static void cam_cut(u32 t)
     float df = cont ? f - R->fov : 0.0f, pf = cont ? R->df : 0.0f;
     R->tick = t; R->cam = cam; R->fov = f; R->df = df;
     for (int k = 0; k < 6; k++) R->d[k] = d[k];
+#ifdef REGION_APOC
+    CAM_WIDE = cont && dot > 0.0f && d2 <= 9.0f * p2 + 16.0f;
+#else
+    CAM_WIDE = 0;
+#endif
+    /* battle: attack zooms (criticals) move far and accelerate, which the cut
+     * test and THR2 took for cuts: every battle camera step is blended
+     * (Apocalypse a18 probe, confirmed in play) */
+    if (IN_BATTLE) { CAM_WIDE = 1; return; }
     if (CAMANIM_TICK + 2 < t) return;                    /* no cutscene camera running */
     int cut = d2 > 16.0f && !(dot > 0.0f && d2 <= 9.0f * p2 + 16.0f);   /* 4 units start allowance */
     float adf = df < 0.0f ? -df : df, apf = pf < 0.0f ? -pf : pf;
@@ -1461,6 +1751,83 @@ __attribute__((noinline)) static void cam_cut(u32 t)
     S->camValid = 0;                                     /* core: no blend this tick */
     FOV->tick = 0;                                       /* fov_swap: no blend this tick */
 }
+#ifdef REGION_APOC
+/* ---------------------------------------------------------------------
+ * UI views (the new map / Compendium module, 0x484000-0x4A8000): a view is
+ * {x, y, ox, oy, bank} and the draw helpers add x + ox to every element.
+ * 30 Hz logic copies a sliding sprite's position into it (ViewSetXY), so the
+ * sprite's own midpoint never reaches the screen.  view_rec keeps the position
+ * from before this tick's first set, view_swap draws the midpoint on the logic
+ * frame.  The first move of a slide is a placement jump (off screen to the
+ * start): no blend above VR_MAXD.
+ *
+ * Cutscene cameras: most are .bch now (AsdAnimCamera), not NW4C
+ * CameraAnimation, so updf_class never sees them.  They step with game logic
+ * at whole frames: only the core's blend can show a cut, and cam_cut stops it
+ * while ext_animcam (camera evaluate 0x3F9C6C) keeps CAMANIM_TICK current.
+ * --------------------------------------------------------------------- */
+typedef struct { u32 v, tick, sw; float p[2], c[2]; } VRec;   /* 28 bytes */
+#define VR     ((VRec *)((u32)S + 0x700))                     /* up to S + 0xA80 */
+#define VR_N   32
+#define VR_MAXD 200.0f
+void view_rec(u32 v)
+{
+    if (S->dt != 1.0f) return;                                /* 30 Hz tasks only */
+    u32 t = tick_now();
+    VRec *r = 0, *fr = 0;
+    for (int i = 0; i < VR_N; i++) {
+        VRec *q = &VR[i];
+        if (q->v == v) { r = q; break; }
+        if (!fr && q->tick != t) fr = q;
+    }
+    if (!r) { if (!fr) return; r = fr; r->v = v; r->tick = t - 1; }
+    if (r->tick == t) return;                                 /* second set in this tick */
+    r->tick = t;
+    r->p[0] = ((float *)v)[0]; r->p[1] = ((float *)v)[1];
+}
+__attribute__((noinline)) static void view_swap(u32 t)
+{
+    for (int i = 0; i < VR_N; i++) {
+        VRec *r = &VR[i];
+        if (r->tick != t) continue;
+        volatile float *V = (volatile float *)r->v;
+        float x = V[0], y = V[1], dx = x - r->p[0], dy = y - r->p[1];
+        if ((dx == 0.0f && dy == 0.0f) || dx > VR_MAXD || dx < -VR_MAXD || dy > VR_MAXD || dy < -VR_MAXD) continue;
+        r->c[0] = x; r->c[1] = y;
+        V[0] = r->p[0] + dx * 0.5f; V[1] = r->p[1] + dy * 0.5f;
+        r->sw = 1;
+    }
+}
+__attribute__((noinline)) static void view_restore(void)
+{
+    for (int i = 0; i < VR_N; i++) {
+        VRec *r = &VR[i];
+        if (!r->sw) continue;
+        r->sw = 0;
+        ((volatile float *)r->v)[0] = r->c[0]; ((volatile float *)r->v)[1] = r->c[1];
+    }
+}
+__asm__(
+"    .section .ext6.text.view,\"ax\",%progbits\n"
+"    .arm\n"
+"    .global ext_view_set, ext_animcam\n"
+"ext_view_set:\n"                      /* entered by b from ViewSetXY (view r0, x r1, y r2) */
+"    push  {r0, r1, r2, lr}\n"
+"    bl    view_rec\n"
+"    pop   {r0, r1, r2, lr}\n"
+"    vmov  s1, r2\n"
+"    b     ViewSetXY_cont\n"
+"ext_animcam:\n"                       /* entered by b from AnimCamEval (r3 is free) */
+"    ldr   r12, =0x004EFE38\n"
+"    ldr   r12, [r12]\n"
+"    lsr   r12, r12, #1\n"
+"    ldr   r3, =0x004F3FD4\n"           /* CAMANIM_TICK */
+"    str   r12, [r3]\n"
+"    push  {r4, r5, r6, r7, r8, lr}\n"
+"    b     AnimCamEval_cont\n"
+"    .ltorg\n"
+);
+#endif
 #pragma clang section text=".ext.text" rodata=".ext.rodata"
 #ifdef CAMLOG
 /* ---------------------------------------------------------------------
@@ -1470,7 +1837,7 @@ __attribute__((noinline)) static void cam_cut(u32 t)
  * whether fov_swap blended it.  Ring of CL_N records on the game heap,
  * pointer at 0x4F3FCC (magic 'CLG1').  Read with tools/gdb/cam_dump.py.
  * --------------------------------------------------------------------- */
-#pragma clang section text=".ext5.text" rodata=".ext5.rodata"
+#pragma clang section text=".ext4.text" rodata=".ext4.rodata"
 #define CL_N 512
 typedef struct { u32 tick, counter, cam, flags, scene; float fov, real[6], prev[6]; } ClRec;   /* 72 bytes */
 typedef struct { u32 magic, n, pad[2]; ClRec r[CL_N]; } ClTab;
@@ -1480,10 +1847,26 @@ __attribute__((noinline)) static void cam_log(u32 t)
     ClTab *L = (ClTab *)heap_tab(&CL_HEAP, 0x31474C43u, sizeof(ClTab));
     if (!L) return;
     u32 cam = (u32)GetGameCamera();
+#ifdef REGION_APOC
+    /* fast moves only, plus one tick either side: the ring outlasts a whole battle */
+    int fast = 0;
+    if (cam >= 0x00100000u)
+        for (int k = 0; k < 6; k++) { float d = *(volatile float *)(cam + 4 + k * 4) - S->camPrev[k]; if (d * d > 64.0f) fast = 1; }
+    if (fast) L->pad[0] = 2;
+    if (!L->pad[0]) return;
+    L->pad[0]--;
+#endif
     ClRec *r = &L->r[L->n++ & (CL_N - 1)];
     r->tick = t; r->counter = S->counter; r->cam = cam;
     r->flags = S->camValid | (S->camPtr == cam) << 1 | (FOV->sw & 1) << 2 | IN_BATTLE << 3;
     r->scene = *(volatile u32 *)0x00464AF8u;
+#ifdef REGION_APOC    /* battle camera work: scene = tween flags +0x64C, top byte of counter = mode +0x38 */
+    extern char BtlCamPtr[];
+    u32 bc = IN_BATTLE ? *(volatile u32 *)BtlCamPtr : 0;
+    r->flags |= (CAM_WIDE != 0) << 4 | (bc >= 0x00100000u && cam == bc + 0x6C) << 5;
+    r->scene = bc >= 0x00100000u ? *(volatile u32 *)(bc + 0x64C) : 0;
+    r->counter = (S->counter & 0xFFFFFFu) | (bc >= 0x00100000u ? *(volatile u32 *)(bc + 0x38) << 24 : 0);
+#endif
     r->fov = cam >= 0x00100000u ? *(volatile float *)(cam + 0x28) : 0.0f;
     for (int k = 0; k < 6; k++) {
         r->real[k] = cam >= 0x00100000u ? *(volatile float *)(cam + 4 + k * 4) : 0.0f;
@@ -1499,9 +1882,16 @@ void ext_watch_swap(SprTab *T, u32 t, u32 phase)
         spr_bigmove_fix(T, t);
         if (!CAMPAGE) CAMPAGE = *(volatile u32 *)0x004F1000u == 0x4D414343u ? 1 : 2;
         if (CAMPAGE == 1) { node_veto(t); rot_swap(t); }
+#ifdef REGION_APOC    /* MIF3DL's own check: tiles only with the map on, never in battle; COMBG layout differs */
+        if (CAMPAGE == 1 && !IN_BATTLE && *(volatile u32 *)(0x005F15FCu + 0x600)) mif_swap(t);
+#else
         if (CAMPAGE == 1) mif_swap(t);
         bg_swap(t);
+#endif
         if (CAMPAGE == 1) { mc_alloc(); battle_check(); cam_cut(t); fov_swap(); scl_swap(); dc_swap(t); pt_swap(t); ci_install(); }
+#ifdef REGION_APOC
+        if (CAMPAGE == 1) view_swap(t);
+#endif
 #ifdef CAMLOG
         if (CAMPAGE == 1) cam_log(t);
 #endif
@@ -1549,5 +1939,8 @@ void ext_watch_restore(SprTab *T)
     bg_restore();
     if (CAMPAGE == 1) { scl_restore(); fov_restore(); dc_restore(); pt_restore(); }
     if (CAMPAGE == 1) mif_restore();
+#ifdef REGION_APOC
+    if (CAMPAGE == 1) view_restore();
+#endif
     if (ROT_ANY) { ROT_ANY = 0; rot_restore(); }
 }

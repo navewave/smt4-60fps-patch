@@ -34,19 +34,20 @@ SITES = ns['SITES'] + [
   dict(addr=0x108A64, kind='bl', to='hk_campdraw',   expect=0xE3A00001),
   dict(addr=0x1031F4, kind='bl', to='hk_runend',     expect=0xE59D0000),
 ]
-# per-version hook variants: {region: {USA site: (hook, expected original word)}}
+# per-game hook variants: {family: {USA site: (hook, expected original word)}}
 SITE_VARIANT = {'apoc': {0x12477C: ('hk_blend_s2', 0xEE300A01)}}
 for st in SITES:
-    v = SITE_VARIANT.get(B.REGION, {}).get(st['addr'])
+    v = SITE_VARIANT.get(B.FAMILY, {}).get(st['addr'])
     if v: st['to'], st['expect'] = v
 patches, syms, cave = B.build([f'{B.ROOT}/patch/phase3b.S', f'{B.ROOT}/patch/interp_arm.c',
                                f'{B.ROOT}/patch/interp_thumb.c', f'{B.ROOT}/patch/interp_ext.c'],
                               SITES + ns['BOOT'], NAME)
 ROOT = B.ROOT
-B.write_ips([p for p in patches if p[0] < B.P(0x4F1000)], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
+if not B.CORE_IN_PAGE:                                # needs the core in the text cave (no exheader)
+    B.write_ips([p for p in patches if p[0] < B.P(0x4F1000)], f'{ROOT}/out/{NAME}{SFX}_60fps_only.ips')
 hw = B.hw_patches(patches)
 B.write_ips(hw, f'{ROOT}/out/{NAME}{SFX}_code_hw.ips')
-print('hw patches', len(hw), 'of', len(patches))
+print('hw patches', len(hw), 'of', len(patches), '(core in its own page: needs the plugin on hardware)' if B.CORE_IN_PAGE else '')
 
 # ---- right-stick camera at page 0x4F1000 ----
 PAGE, CODE_AT, STATE_AT = B.P(0x4F1000), B.P(0x4F1020), B.P(0x4F1F00)
@@ -55,7 +56,7 @@ sh = lambda *a: subprocess.check_call(list(a))
 sh('clang', '--target=armv6k-none-eabi', '-marm', '-mfloat-abi=hard', '-mfpu=vfpv2', '-Oz', '-ffreestanding',
    '-fno-builtin', '-fno-math-errno', '-nostdlib', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
    '-ffunction-sections', '-fdata-sections', '-Wall', '-c', B.subst_source(f'{ROOT}/src/cam_stick.c'),
-   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4')
+   '-o', f'{bd}/cam.o', f'-DCAM_STATE=0x{STATE_AT:X}u', '-DCAM_FLAGS=4', *B.DEFS)
 open(f'{bd}/cam.ld', 'w').write('SECTIONS {\n'
     f'  . = 0x{PAGE:X}; .cammagic : {{ *(.cam.magic) }}\n'
     f'  . = 0x{PAGE+4:X}; .camcfg : {{ *(.cam.cfg) }}\n'
@@ -85,7 +86,13 @@ B.write_ips(patches + cam, f'{ROOT}/out/{NAME}{SFX}_code.ips')
 
 exh = bytearray(open(B.EXH, 'rb').read())
 bss = struct.unpack_from('<I', exh, 0x3C)[0]; assert bss == B.R['bss'], hex(bss)
-struct.pack_into('<I', exh, 0x3C, bss + 0x4000)   # pages 0x4F1000 .. 0x4F4000
+# Azahar patches a buffer of code.bin + bss rounded up to a page, and fails (Error 12) on any
+# IPS write past its end: raise bss by 0x4000 (pages 0x4F1000 .. 0x4F4000), more if the last
+# page needs it (Apocalypse: the ext6 page lies past the rounding slack that USA happens to have)
+ips_end = max(a + len(r) for a, r in patches + cam)
+add = 0x4000
+while B.BASE + len(orig) + ((bss + add + 0xFFF) & ~0xFFF) < ips_end: add += 0x1000
+struct.pack_into('<I', exh, 0x3C, bss + add)
 names = [bytes(exh[0x250 + i * 8:0x258 + i * 8]).rstrip(b'\0') for i in range(34)]
 if b'ir:rst' not in names:
     slot = names.index(b''); exh[0x250 + slot * 8:0x258 + slot * 8] = b'ir:rst\0\0'
