@@ -1,13 +1,13 @@
 """Package a built release for every version.
-    python tools/package.py BUILD [--release X.Y] [region ...]
+    python tools/package.py BUILD [--release X.Y | --final] [region ...]
         (expects out/BUILD[_<region>]_* from build_release.py, BUILD with or without a
         'phase' prefix: 12, phase12, b13; --release names the public release: zips
-        <GAME>_60fps_vX.Y_<VERSION>.zip)
+        <GAME>_60fps_vX.Y_<VERSION>.zip; --final leaves the build out: <GAME>_60fps_<VERSION>.zip)
         and out/BUILD[_<region>]_plugin.3gx / _exheader_hw.bin from build_plugin.py)
 Writes releases/<GAME>_60fps_<BUILD>_<VERSION>.zip (GAME: SMT4 or SMT4A for Apocalypse/FINAL;
 BUILD without 'phase'), one per version, each with
-Azahar_full, Actual_3DS (SD card layout: luma/titles + luma/plugins), Cheats and a
-README.  (build_release.py still makes NAME_60fps_only.ips; it is no longer shipped.)"""
+Azahar_full (Azahar user-folder layout: load/mods + cheats), Actual_3DS (SD card layout:
+luma/titles + luma/plugins + cheats) and a README.  (build_release.py still makes NAME_60fps_only.ips; it is no longer shipped.)"""
 import os, sys, shutil, zipfile, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from regions import region, REGIONS, ROOT, available, family
@@ -17,6 +17,8 @@ ARGS = sys.argv[2:]
 REL = None
 if '--release' in ARGS:
     i = ARGS.index('--release'); REL = ARGS[i + 1]; del ARGS[i:i + 2]
+FINAL = '--final' in ARGS                            # names without the build: <GAME>_60fps_<VERSION>.zip
+if FINAL: ARGS.remove('--final')
 BUILD = BUILD[5:] if BUILD.startswith('phase') else BUILD
 LABEL = {'us10': 'USA_1.0', 'us11': 'USA_1.1', 'eu': 'EUR', 'jp': 'JPN', 'kr': 'KOR', 'tw': 'TWN',
          'apoc': 'USA', 'apoc_eu': 'EUR', 'apoc_jp': 'JPN_FINAL_1.0', 'apoc_jp11': 'JPN_FINAL_1.1'}
@@ -40,26 +42,30 @@ def cheat_blocks():
         elif line and cur is not None: cur.append(line)
     return blocks
 
-README = """SMT IV 60 FPS patch - {build} - {name}
+README = """SMT IV 60 FPS patch{build} - {name}
 Game: {game} (title {tid})
 Game logic still runs at 30 Hz (original speed); the in-between frames are interpolated.
 
 Pick ONE of the two patch folders:
 
 1) Azahar_full  (recommended for Azahar: 60 fps + all smoothing fixes + right-stick camera)
-   Copy the folder "{tid}" into:  Azahar/load/mods/
+   Copy everything inside Azahar_full (the "load" and "cheats" folders) into Azahar's
+   user folder (Windows: %APPDATA%\\Azahar) and merge folders.
    Result:
      Azahar/load/mods/{tid}/exheader.bin
      Azahar/load/mods/{tid}/exefs/code.ips
+     Azahar/cheats/{tid}.txt            (optional cheats, see below)
    exheader.bin is REQUIRED. Without it the game will not start
    (log shows "Failed to load ROM (Error 12)"). Always replace both files together.
 
 2) Actual_3DS  (a real 3DS with Luma3DS 13.0 or newer; New 3DS recommended)
-   Copy the "luma" folder inside Actual_3DS to the root of the SD card (merge folders).
+   Copy everything inside Actual_3DS (the "luma" and "cheats" folders) to the root of
+   the SD card and merge folders.
    Result:
      SD:/luma/titles/{tid}/code.ips
      SD:/luma/titles/{tid}/exheader.bin
      SD:/luma/plugins/{tid}/smt4_60fps.3gx
+     SD:/cheats/{tid}.txt               (optional cheats, see below)
    Keep only ONE .3gx file in that plugins folder.
    Setup, once:
      - Luma config (hold SELECT while powering on): turn on "Enable game patching".
@@ -73,14 +79,15 @@ Pick ONE of the two patch folders:
    using the cheats below (they remove full-screen effects) can help.{hwnote}
    To uninstall: delete the three files.
 
-Optional cheats (Cheats folder): ghosting fix and bloom removal by the GBAtemp
+Optional cheats (included): ghosting fix and bloom removal by the GBAtemp
 thread "Shin Megami Tensei IV and IV:A Ghosting Fix":
   {thread}
-  Azahar:    copy Cheats/Azahar/{tid}.txt into Azahar's user folder: Azahar/cheats/
-             (Windows: %APPDATA%\\Azahar\\cheats), then tick the codes in Azahar's cheat
-             window while the game is running
-  Luma3DS:   copy Cheats/Luma3DS/cheats/{tid}.txt to SD:/cheats/
-             (open the Rosalina menu with L+Down+Select > Cheats in game)
+  The cheat file is already in both folders above, so it is installed with the patch.
+  The codes start switched off. To use them:
+  Azahar:    tick the codes in Azahar's cheat window while the game is running
+  Luma3DS:   open the Rosalina menu (L+Down+Select) > Cheats in game
+  If you already had a cheat file for this game, the included one replaces it: copy any
+  of your own codes back into it.
   "Ghosting Fix + Bloom Removal" holds only the bloom lines: enable it together with the ghosting fix code.
   On a real 3DS these cheats also lighten the GPU load, which helps keep 60 fps.
 
@@ -123,10 +130,12 @@ def package(key):
         if not os.path.exists(out(k)): raise SystemExit(f'missing {out(k)}: run SMT4_REGION={key} python tools/build_release.py {pre}')
     for k in ('plugin.3gx', 'exheader_hw.bin'):
         if not os.path.exists(out(k)): raise SystemExit(f'missing {out(k)}: run SMT4_REGION={key} python tools/build_plugin.py {pre}')
-    name = f"{GAME.get(family(key), 'SMT4')}_60fps_{'v' + REL if REL else BUILD}_{LABEL[key]}"
+    tag = '' if FINAL else f"_{'v' + REL if REL else BUILD}"
+    name = f"{GAME.get(family(key), 'SMT4')}_60fps{tag}_{LABEL[key]}"
     stage = f'{ROOT}/build/pkg/{name}'
     shutil.rmtree(stage, ignore_errors=True)
-    files = {f'Azahar_full/{tid}/exefs/code.ips': out('code.ips'), f'Azahar_full/{tid}/exheader.bin': out('exheader.bin'),
+    files = {f'Azahar_full/load/mods/{tid}/exefs/code.ips': out('code.ips'),
+             f'Azahar_full/load/mods/{tid}/exheader.bin': out('exheader.bin'),
              f'Actual_3DS/luma/titles/{tid}/code.ips': out('code_hw.ips'),
              f'Actual_3DS/luma/titles/{tid}/exheader.bin': out('exheader_hw.bin'),
              f'Actual_3DS/luma/plugins/{tid}/smt4_60fps.3gx': out('plugin.3gx')}
@@ -135,12 +144,12 @@ def package(key):
     blocks = [b for b in cheat_blocks() if CHEAT_TAG[key](b[0])]
     assert len(blocks) == 2, f'expected ghosting + bloom cheats for {key}, got {[b[0] for b in blocks]}'
     text = '\n\n'.join('\n'.join(b) for b in blocks) + '\n'
-    for dst in (f'Cheats/Azahar/{tid}.txt', f'Cheats/Luma3DS/cheats/{tid}.txt'):
+    for dst in (f'Azahar_full/cheats/{tid}.txt', f'Actual_3DS/cheats/{tid}.txt'):   # drag-and-drop: installed with the patch
         os.makedirs(os.path.dirname(f'{stage}/{dst}'), exist_ok=True)
         open(f'{stage}/{dst}', 'w', encoding='utf-8', newline='\n').write(text)
     game = R['name'] if family(key) == 'apoc' else f"Shin Megami Tensei IV, {R['name']}"
     hwnote = HWNOTE.get(family(key), '') + HWNOTE_ALL
-    readme = README.format(hwnote=hwnote, build=f'release {REL} (build {BUILD})' if REL else f'build {BUILD}', name=R['name'], game=game,
+    readme = README.format(hwnote=hwnote, build='' if FINAL else f' - release {REL} (build {BUILD})' if REL else f' - build {BUILD}', name=R['name'], game=game,
                            tid=tid, thread=THREAD, extra=EXTRA.get(key, '') + (CORE_PAGE_NOTE if R.get('core_page') else ''))
     open(f'{stage}/README.txt', 'w', encoding='utf-8', newline='\r\n').write(readme)
     zp = f'{ROOT}/releases/{name}.zip'

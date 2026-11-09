@@ -89,3 +89,11 @@ Same for `apoc_jp` / `apoc_jp11`. Read the port.py notes: "function entry maps t
   mapped to the expected place, build, plugin, verify_region and package ran clean.
 - Not checked: the real EUR/JPN binaries (encrypted). JPN FINAL may differ more than EUR
   (localisation code, text engine): expect manual entries there. All untested in play.
+
+## FINAL JPN 1.1 imported and built (2026-11-08)
+- The owner decrypted the 1.1 update CIA (0004000E00166B00, CTR-U-BG4J) with GodMode9; import_game.py put
+  code.bin + exheader.bin in JPN_v11/. port.py apoc_jp11: 133 native / 131 ported addresses, 0 unmapped, the same
+  vote splits as 1.0 (majority taken). Relative to 1.0, .data starts 0x4000 later and .bss ends 0x1000 earlier;
+  every mapped address follows one of those two shifts (0x619988 took FadeRecs' -0x1000 shift, consistent).
+- b15 builds like 1.0 (core in its own page 0x64B000, same sizes), verify_region OK, packaged as
+  releases/SMT4A_60fps_b15_JPN_FINAL_1.1.zip. Untested in play.

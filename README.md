@@ -12,15 +12,15 @@ Download the zip for your game version from the **[Releases](../../releases)** p
 
 | Game version | Title ID | Zip name ends in |
 |---|---|---|
-| USA 1.0 | `00040000000E5C00` | `USA_v1.0` |
-| USA 1.1 (eShop update installed) | `00040000000E5C00` | `USA_v1.1` |
+| USA 1.0 | `00040000000E5C00` | `USA_1.0` |
+| USA 1.1 (eShop update installed) | `00040000000E5C00` | `USA_1.1` |
 | Europe | `0004000000141C00` | `EUR` |
 | Japan | `0004000000088A00` | `JPN` |
 | Korea | `00040000000F6100` | `KOR` |
 | Taiwan | `00040000000D6D00` | `TWN` |
 
 > [!IMPORTANT]
-> USA 1.0 and 1.1 have the same title ID but different code. Use the `USA_v1.1` zip **only** if the 1.1 update is installed. The 1.1 files crash at boot on a 1.0 game.
+> USA 1.0 and 1.1 have the same title ID but different code. Use the `USA_1.1` zip **only** if the 1.1 update is installed. The 1.1 files crash at boot on a 1.0 game.
 
 Testing so far: USA 1.0 in Azahar and on a New 3DS. The other versions are built the same way but have not been tested yet.
 
@@ -31,8 +31,9 @@ Testing so far: USA 1.0 in Azahar and on a New 3DS. The other versions are built
 | USA | `000400000019A200` | `USA` |
 | Europe | `00040000001A6B00` | `EUR` |
 | Japan (*Shin Megami Tensei IV: Final*) 1.0 | `0004000000166B00` | `JPN_FINAL_1.0` |
+| Japan (*Shin Megami Tensei IV: Final*) 1.1 (update installed) | `0004000000166B00` | `JPN_FINAL_1.1` |
 
-Testing so far: USA in Azahar and on a New 3DS. Europe and Japan are built the same way but have not been tested yet. The Japanese 1.1 update is not supported yet.
+Testing so far: USA in Azahar and on a New 3DS. Europe and Japan are built the same way but have not been tested yet. Use the `JPN_FINAL_1.1` zip **only** if the 1.1 update is installed.
 
 See [Apocalypse notes](#apocalypse-notes) for what differs from SMT IV.
 
@@ -42,10 +43,11 @@ Installation is the same for both games. Only the title ID changes.
 
 ### Azahar (recommended)
 
-Copy the `Azahar_full/<title id>` folder into `Azahar/load/mods/`, so you end up with:
+Copy everything inside `Azahar_full` (the `load` and `cheats` folders) into Azahar's user folder (on Windows, `%APPDATA%\Azahar`), merging folders. You should end up with:
 
 - `Azahar/load/mods/<title id>/exheader.bin`
 - `Azahar/load/mods/<title id>/exefs/code.ips`
+- `Azahar/cheats/<title id>.txt` (the optional cheats, switched off until you enable them)
 
 Both files are required and must come from the same zip. Without the `exheader.bin` the game won't start (Azahar's log shows `Failed to load ROM (Error 12)`).
 
@@ -54,10 +56,11 @@ Both files are required and must come from the same zip. Without the `exheader.b
 A New 3DS is recommended. An Old 3DS has not been tested and is likely too slow.
 
 1. Install **Luma3DS 13.0 or newer** (it has the plugin loader built in).
-2. Copy the `luma` folder from `Actual_3DS` to the root of the SD card. You should end up with:
+2. Copy everything inside `Actual_3DS` (the `luma` and `cheats` folders) to the root of the SD card, merging folders. You should end up with:
    - `SD:/luma/titles/<title id>/code.ips`
    - `SD:/luma/titles/<title id>/exheader.bin`
    - `SD:/luma/plugins/<title id>/smt4_60fps.3gx` (keep only one `.3gx` file in that folder)
+   - `SD:/cheats/<title id>.txt` (the optional cheats, switched off until you enable them)
 3. **Luma config** (hold SELECT while powering on): turn on *Enable game patching*.
 4. **Rosalina menu** (L + Down + Select on the HOME menu): set *Plugin Loader* to Enabled.
 5. Start the game from the HOME menu. The top screen flashes blue for a moment when the plugin loads.
@@ -112,7 +115,9 @@ Reports from Apocalypse players are especially welcome.
 
 ## Optional cheats
 
-Each zip includes the **ghosting fix** and **bloom removal** codes from the GBAtemp thread [Shin Megami Tensei IV and IV:A Ghosting Fix](https://gbatemp.net/threads/shin-megami-tensei-iv-and-iv-a-ghosting-fix.684175/), with credit to its author. They work alongside the patch in Azahar's cheat window or in Luma3DS (Rosalina menu > Cheats), and on an actual 3DS they also help performance. Setup steps are in the zip's `README.txt`.
+Each zip includes the **ghosting fix** and **bloom removal** codes from the GBAtemp thread [Shin Megami Tensei IV and IV:A Ghosting Fix](https://gbatemp.net/threads/shin-megami-tensei-iv-and-iv-a-ghosting-fix.684175/), with credit to its author. The cheat file is already inside `Azahar_full` and `Actual_3DS`, so it's installed together with the patch. The codes start switched off: turn them on in Azahar's cheat window or in Luma3DS (Rosalina menu > Cheats). On an actual 3DS they also help performance.
+
+If you already have a cheat file for the game, the included one replaces it, so copy any of your own codes back into it.
 
 ## Reporting problems
 
